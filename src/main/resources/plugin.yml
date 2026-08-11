@@ -1,0 +1,38 @@
+name: InMc-TitleForge
+version: '${version}'
+main: kr.inmc.titleforge.TitleForgePlugin
+author: InMc
+description: 칭호 · 인장 · 닉네임 통합 관리 플러그인
+# Paper 26.1 대상. api-version 은 서버가 요구하는 최소 표기이며,
+# 서버가 다른 표기를 요구할 경우 이 값만 조정하면 됩니다.
+api-version: '1.21'
+softdepend:
+  - PlaceholderAPI
+  - Vault
+
+commands:
+  it:
+    description: 칭호/인장/닉네임 명령어
+    usage: /it
+    aliases:
+      - titleforge
+      - tf
+      - 칭호
+
+permissions:
+  titleforge.use:
+    description: 기본 명령어 및 GUI 사용
+    default: true
+  titleforge.nickname:
+    description: 닉네임 변경
+    default: true
+  titleforge.info.other:
+    description: 다른 플레이어 정보 조회
+    default: op
+  titleforge.admin:
+    description: 칭호/인장 관리 전체 권한
+    default: op
+    children:
+      titleforge.use: true
+      titleforge.nickname: true
+      titleforge.info.other: true

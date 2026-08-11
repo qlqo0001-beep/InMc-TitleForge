@@ -1,0 +1,119 @@
+# ══════════════════════════════════════════════════════════════
+#  InMc-TitleForge
+#  칭호(Title) · 인장(Seal) · 닉네임(Nickname)
+#  모든 문자열은 MiniMessage 형식입니다. (https://docs.advntr.dev/minimessage)
+# ══════════════════════════════════════════════════════════════
+
+storage:
+  # SQLITE 또는 MYSQL
+  type: SQLITE
+  sqlite:
+    file: data.db
+  mysql:
+    host: localhost
+    port: 3306
+    database: titleforge
+    username: root
+    password: ''
+    # MariaDB 드라이버를 사용하며 MySQL 서버에도 그대로 연결됩니다.
+    properties: 'useUnicode=true&characterEncoding=utf8'
+    pool-size: 6
+  # 변경된 프로필을 몇 초마다 일괄 저장할지 (0 = 자동 저장 끔)
+  autosave-seconds: 300
+  # 퇴장 후 캐시를 몇 초간 유지할지 (재접속이 잦은 서버는 높게)
+  cache-keep-seconds: 60
+
+title:
+  # 표시 칭호 미장착 시 플레이스홀더가 돌려줄 값
+  none-display: ''
+  # 능력치 칭호 미장착 시
+  none-stat: '<gray>없음</gray>'
+  # 보유 개수 마일스톤 보너스. "개수: {스텟: 수치}"
+  collection-milestones:
+    10:
+      max_health: 2.0
+    25:
+      max_health: 4.0
+      attack_damage: 0.5
+    50:
+      max_health: 6.0
+      attack_damage: 1.0
+      armor: 1.0
+
+seal:
+  none-display: ''
+
+nickname:
+  # 닉네임 기능 자체 사용 여부
+  enabled: true
+  # 입력 방식: ANVIL(모루 팝업) 또는 CHAT(채팅 입력)
+  input-mode: ANVIL
+  # 길이 계산: CHARS(글자 수) 또는 WIDTH(한글을 2로 계산)
+  length-mode: CHARS
+  min-length: 2
+  max-length: 12
+  # 허용 문자 구성
+  allow-korean: true
+  allow-english: true
+  allow-digits: true
+  allow-space: false
+  # 위 옵션 외에 추가로 허용할 문자들 (정규식 문자클래스 안에 그대로 들어갑니다)
+  extra-allowed-chars: '_-'
+  # 완성형 한글만 허용 (자음/모음 단독 입력 차단)
+  korean-complete-only: true
+  # 같은 닉네임 중복 금지
+  unique: true
+  # 포함되면 거부되는 단어 (대소문자 무시)
+  blacklist:
+    - admin
+    - 관리자
+    - 운영자
+    - staff
+  # 변경 제한
+  cooldown-seconds: 604800   # 7일. 0이면 쿨타임 없음
+  cost:
+    economy:
+      # Vault 가 설치되어 있을 때만 동작합니다.
+      enabled: false
+      amount: 10000.0
+    item:
+      enabled: false
+      material: PAPER
+      amount: 1
+      # 아이템 이름이 일치해야 소모됩니다. 비우면 이름 검사 없음 (MiniMessage)
+      name: '<light_purple>닉네임 변경권</light_purple>'
+
+display:
+  # 이름 조합 포맷. <seal> <title> <nickname> 사용 가능
+  nameplate-format: '<seal><title><nickname>'
+  # 각 요소가 있을 때만 붙는 접미 공백 처리용
+  seal-suffix: ' '
+  title-suffix: ' '
+  # displayName(각종 시스템 메시지에 쓰이는 표시 이름) 적용
+  display-name: true
+  # 탭 리스트 이름 적용 (기본 꺼짐 — TAB 등 전용 플러그인과 충돌 방지)
+  tab: false
+  # 채팅 포맷 직접 처리 (기본 꺼짐 — 채팅 플러그인과 충돌 방지)
+  chat:
+    enabled: false
+    format: '<nameplate><dark_gray> » </dark_gray><white><message></white>'
+  # 머리 위 이름표 (스코어보드 팀 기반, 기본 꺼짐)
+  nametag: false
+
+gui:
+  # 목록 GUI 한 페이지에 표시할 칸 수 (9의 배수, 최대 45)
+  page-size: 45
+  # 미보유 항목도 목록에 노출할지 (기본값. GUI 안에서 토글 가능)
+  show-unowned-by-default: true
+  filler: GRAY_STAINED_GLASS_PANE
+  icons:
+    title: NAME_TAG
+    seal: HEART_OF_THE_SEA
+    profile: PLAYER_HEAD
+    admin: COMMAND_BLOCK
+    owned: PAPER
+    locked: GRAY_DYE
+    equipped: ENCHANTED_BOOK
+
+# 콘솔 디버그 로그
+debug: false
