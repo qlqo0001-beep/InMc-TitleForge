@@ -143,13 +143,19 @@ class NicknameService(private val plugin: TitleForgePlugin) {
             return
         }
 
+        // 비용을 걷기 전에 취소 가능한 이벤트부터 불러 확정한다. 다른 플러그인이 취소하면
+        // (욕설 필터 등) 여기서 그냥 끝나고 돈·아이템은 전혀 걷지 않는다.
+        // 순서를 반대로 하면(적용 안에서 이벤트를 부르면) 이미 걷은 비용이 환불 없이 사라진다.
+        val event = NicknameChangeEvent(player, profile.nickname, nickname)
+        if (!event.callEvent()) return
+
         if (economy != null && !economy.withdraw(player, amount)) {
             plugin.messages.send(player, "nickname.need-money", "amount" to economy.format(amount))
             return
         }
         if (chosen != null) consumeCostItems(player, chosen)
 
-        if (!applyNickname(player, profile, nickname)) return
+        commitNickname(player, profile, event.newNickname, touchCooldown = true)
 
         if (economy != null) {
             plugin.messages.send(player, "nickname.paid-money", "amount" to economy.format(amount))
@@ -162,23 +168,27 @@ class NicknameService(private val plugin: TitleForgePlugin) {
         }
     }
 
-    /** 실제 적용. 관리자 명령도 이 경로를 쓴다. */
+    /** 실제 적용. 관리자 명령도 이 경로를 쓴다(비용 없이 바로 이벤트→적용). */
     fun applyNickname(player: Player, profile: PlayerProfile, nickname: String?, touchCooldown: Boolean = true): Boolean {
         val event = NicknameChangeEvent(player, profile.nickname, nickname)
         if (!event.callEvent()) return false
+        commitNickname(player, profile, event.newNickname, touchCooldown)
+        return true
+    }
 
-        profile.nickname = event.newNickname
+    /** 이벤트 통과 후 실제로 저장·표시를 반영하는 공통 마무리. */
+    private fun commitNickname(player: Player, profile: PlayerProfile, newNickname: String?, touchCooldown: Boolean) {
+        profile.nickname = newNickname
         if (touchCooldown) profile.nicknameChangedAt = System.currentTimeMillis()
         profile.markDirty()
         plugin.profiles.save(profile)
         plugin.nameDisplay.refresh(player)
 
-        if (event.newNickname == null) {
+        if (newNickname == null) {
             plugin.messages.send(player, "nickname.reset")
         } else {
-            plugin.messages.send(player, "nickname.changed", "nickname" to Text.escape(event.newNickname!!))
+            plugin.messages.send(player, "nickname.changed", "nickname" to Text.escape(newNickname))
         }
-        return true
     }
 
     // ── 아이템 비용 ────────────────────────────────────────────────────

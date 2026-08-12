@@ -42,7 +42,18 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             return true
         }
 
-        when (args[0].lowercase()) {
+        // "help" 는 권한 없이도 봐야 하는 안내라 예외. 그 외 서브커맨드는 전부 최소한
+        // titleforge.use 가 있어야 한다 — 예전엔 "menu" 진입 시에만 검사해서, 관리자가
+        // 이 권한만 박탈해도 /it title 등 다른 서브커맨드는 그대로 새어나갔다.
+        // titleforge.admin 은 permissions.yml 에서 titleforge.use 를 자식으로 포함하므로
+        // 관리자는 이 검사에 영향받지 않는다.
+        val sub = args[0].lowercase()
+        if (sub != "help" && sub != "도움말" && sub != "?" && sender is Player && !sender.hasPermission(USE)) {
+            messages.send(sender, "general.no-permission")
+            return true
+        }
+
+        when (sub) {
             "help", "도움말", "?" -> sendHelp(sender)
 
             "menu", "gui", "메뉴" -> player(sender)?.let { openMainMenu(it) }
@@ -152,12 +163,18 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
      */
     private fun withProfile(sender: CommandSender, name: String, action: (PlayerProfile) -> Unit) {
         Sched.async(plugin) {
-            val profile = plugin.profiles.resolveBlocking(name)
-            if (profile == null) {
+            val resolved = plugin.profiles.resolveBlocking(name)
+            if (resolved == null) {
                 messages.send(sender, "player.not-found", "name" to name)
                 return@async
             }
             Sched.global(plugin) {
+                // resolveBlocking 은 완전 오프라인 대상이면 캐시에 없는 임시 인스턴스를 돌려준다.
+                // 그 비동기 조회 도중 대상이 실제로 접속하면 별도의 캐시 인스턴스가 생기는데,
+                // 임시 인스턴스에 그대로 적용하면 나중에 어느 쪽이 저장되느냐에 따라 서로의
+                // 변경을 덮어써 지급/설정이 사라진다. 적용 직전에 한 번 더 캐시를 확인해
+                // 살아있는 인스턴스가 있으면 그쪽을 우선한다.
+                val profile = plugin.profiles.cached(resolved.uuid) ?: resolved
                 action(profile)
                 if (plugin.profiles.isCached(profile)) {
                     plugin.profiles.save(profile)

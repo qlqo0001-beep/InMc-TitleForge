@@ -31,6 +31,16 @@ class StatApplier(
 
     private val attributes = HashMap<String, Attribute>()
 
+    /**
+     * 지금까지 한 번이라도 등장한 MMO 스텟 식별자의 누적 집합(리로드로 줄지 않음).
+     *
+     * `/it reload` 로 `stats.yml` 에서 매핑을 빼거나 이름을 바꾸면, 그 순간 온라인이던
+     * 플레이어에게는 예전 식별자로 이미 모디파이어가 붙어 있다. 회수 대상을 **현재**
+     * 레지스트리에서만 뽑으면 그 예전 모디파이어는 영원히 빠지지 않고 남는다.
+     * 이 집합은 계속 누적해서, 회수(removeIf) 대상만큼은 예전 것도 놓치지 않는다.
+     */
+    private val knownMmoStats = HashSet<String>()
+
     private var attributeRegistryFailed = false
 
     /** 레지스트리가 바뀌면 Attribute 조회 캐시도 다시 만든다. */
@@ -55,6 +65,8 @@ class StatApplier(
                 attributes[stat.id] = attribute
             }
         }
+
+        knownMmoStats.addAll(registry.ofKind(StatKind.MMO).mapNotNull { it.mmoStat })
     }
 
     fun apply(player: Player, stats: Map<String, Double>) {
@@ -93,8 +105,8 @@ class StatApplier(
         hook.apply(player, values, mmoStatIds())
     }
 
-    private fun mmoStatIds(): Collection<String> =
-        registry.ofKind(StatKind.MMO).mapNotNull { it.mmoStat }.distinct()
+    /** 회수 대상. 현재 등록분이 아니라 [knownMmoStats] 누적 집합을 쓴다(위 설명 참고). */
+    private fun mmoStatIds(): Collection<String> = knownMmoStats
 
     private fun removeOwn(instance: AttributeInstance, key: NamespacedKey) {
         val owned = instance.modifiers.filter { it.key == key }

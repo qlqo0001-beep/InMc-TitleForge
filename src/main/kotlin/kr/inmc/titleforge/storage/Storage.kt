@@ -22,10 +22,12 @@ interface Storage {
     /** 여러 개를 한 트랜잭션으로 저장. 연타 편집을 배치로 묶을 때 쓴다. */
     fun saveBadges(badges: Collection<Badge>)
 
+    /**
+     * 정의를 지우고, 그 칭호/인장을 참조하는 보유 기록·장착 슬롯까지 **한 트랜잭션에서**
+     * 함께 정리한다. 나눠서 실행하면 중간에 실패했을 때 이미 지운 정의를 여전히
+     * 누군가 "보유"하거나 "장착"한 것처럼 DB 에 남을 수 있다.
+     */
     fun deleteBadge(type: BadgeType, id: String)
-
-    /** 해당 칭호/인장의 모든 보유 기록 제거. */
-    fun purgeOwnership(type: BadgeType, id: String)
 
     /**
      * ID 를 바꾼다. 정의·보유 기록·장착 슬롯을 한 트랜잭션에서 전부 옮긴다.

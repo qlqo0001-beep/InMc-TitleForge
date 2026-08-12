@@ -32,7 +32,17 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
 
     // ── 수명 주기 ──────────────────────────────────────────────────────
 
-    /** AsyncPlayerPreLoginEvent 에서 호출. 이미 비동기 스레드이므로 그대로 블로킹 조회한다. */
+    /**
+     * AsyncPlayerPreLoginEvent 에서 호출. 이미 비동기 스레드이므로 그대로 블로킹 조회한다.
+     *
+     * DB 조회에 실패하면 **캐시에 아무것도 넣지 않는다.** 예전에는 빈 프로필을 대신 넣었는데,
+     * 접속 중 `markDirty()` 가 한 번이라도 걸리면(예: [kr.inmc.titleforge.listener.PlayerListener.onJoin]
+     * 이 매 접속마다 호출) 다음 자동 저장 때 그 빈 상태로 `REPLACE INTO` + 보유목록 통째로
+     * 재삽입되어, DB 에 실제로 남아있던 보유 칭호·닉네임이 일시적 DB 장애 한 번으로 영구
+     * 삭제된다. 캐시를 비워두면 [PlayerListener.onJoin] 의 기존 재시도 경로가 한 번 더
+     * 시도하고, 그마저 실패해도 이번 접속에서만 칭호/인장/닉네임 기능이 "불러오는 중"으로
+     * 남을 뿐 데이터 유실은 없다.
+     */
     fun loadOnPreLogin(uuid: UUID, name: String) {
         expiry.remove(uuid)
         val existing = cache[uuid]
@@ -44,8 +54,9 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
         val profile = runCatching { plugin.storage.loadProfile(uuid, name) }
             .getOrElse {
                 plugin.logger.severe("프로필 로드 실패 ($name): ${it.message}")
-                PlayerProfile(uuid, name)
-            }
+                null
+            } ?: return
+
         // 오프라인 동안 만료된 항목을 먼저 정리한 뒤 스텟을 계산한다.
         val expired = profile.expired()
         if (expired.isNotEmpty()) {
@@ -230,8 +241,24 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
         if (expired.isNotEmpty()) handleExpired(profile, expired)
     }
 
+    /**
+     * [sweepExpired] (인자 없는 버전)는 [kr.inmc.titleforge.display.DisplayTicker] 의 전역
+     * 스레드에서 캐시된 프로필을 전부 훑는다. 대상이 온라인이면 그 플레이어의 엔티티
+     * 스레드에서 `/it equip` 등으로 **동시에** 같은 프로필을 건드릴 수 있는데,
+     * [PlayerProfile.revoke] 의 "만료된 걸 장착 중이었는지 확인 → 장착 해제"가 원자적이지
+     * 않아서, 하필 그 순간 막 새로 장착한 게 되돌아갈 수 있다. 온라인이면 그 플레이어의
+     * 소유 스레드로 옮겨서 처리해 이 경합을 없앤다(Folia).
+     */
     private fun handleExpired(profile: PlayerProfile, expired: List<Pair<BadgeType, String>>) {
         val player = Bukkit.getPlayer(profile.uuid)
+        if (player == null) {
+            applyExpiry(null, profile, expired)
+        } else {
+            Sched.entity(plugin, player) { applyExpiry(player, profile, expired) }
+        }
+    }
+
+    private fun applyExpiry(player: Player?, profile: PlayerProfile, expired: List<Pair<BadgeType, String>>) {
         for ((type, id) in expired) {
             profile.revoke(type, id)
             if (player == null) continue

@@ -48,7 +48,14 @@ class BadgeRegistry {
 
     fun total(): Int = BadgeType.entries.sumOf { count(it) }
 
-    /** 바뀐 분류만 다시 정렬한다. 편집 1회에 양쪽을 모두 정렬할 이유가 없다. */
+    /**
+     * 바뀐 분류만 다시 정렬한다. 편집 1회에 양쪽을 모두 정렬할 이유가 없다.
+     *
+     * 읽고(putAll) 수정하고 통째로 다시 쓰는 구조라 동기화가 없으면, 서로 다른 분류를
+     * 동시에 편집할 때(Folia 에서는 관리자마다 리전 스레드가 다를 수 있다) 나중에 쓰는
+     * 쪽이 먼저 쓴 쪽의 갱신을 스냅샷째로 덮어써 잃어버릴 수 있다.
+     */
+    @Synchronized
     private fun invalidate(type: BadgeType) {
         val snapshot = EnumMap<BadgeType, List<Badge>>(BadgeType::class.java)
         snapshot.putAll(sorted)

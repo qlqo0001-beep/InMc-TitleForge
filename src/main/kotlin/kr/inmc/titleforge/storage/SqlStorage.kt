@@ -193,27 +193,24 @@ class SqlStorage(
     }
 
     override fun deleteBadge(type: BadgeType, id: String) = connection { conn ->
-        conn.prepareStatement("DELETE FROM tf_badge WHERE type = ? AND id = ?").use { st ->
-            st.setString(1, type.id)
-            st.setString(2, id)
-            st.executeUpdate()
-        }
-        Unit
-    }
-
-    override fun purgeOwnership(type: BadgeType, id: String) = connection { conn ->
-        conn.prepareStatement("DELETE FROM tf_owned WHERE type = ? AND badge_id = ?").use { st ->
-            st.setString(1, type.id)
-            st.setString(2, id)
-            st.executeUpdate()
-        }
-        for (column in equipColumnsFor(type)) {
-            conn.prepareStatement("UPDATE tf_player SET $column = NULL WHERE $column = ?").use { st ->
-                st.setString(1, id)
+        withTransaction(conn) {
+            conn.prepareStatement("DELETE FROM tf_badge WHERE type = ? AND id = ?").use { st ->
+                st.setString(1, type.id)
+                st.setString(2, id)
                 st.executeUpdate()
             }
+            conn.prepareStatement("DELETE FROM tf_owned WHERE type = ? AND badge_id = ?").use { st ->
+                st.setString(1, type.id)
+                st.setString(2, id)
+                st.executeUpdate()
+            }
+            for (column in equipColumnsFor(type)) {
+                conn.prepareStatement("UPDATE tf_player SET $column = NULL WHERE $column = ?").use { st ->
+                    st.setString(1, id)
+                    st.executeUpdate()
+                }
+            }
         }
-        Unit
     }
 
     /**

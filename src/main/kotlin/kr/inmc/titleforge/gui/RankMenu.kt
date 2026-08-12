@@ -62,11 +62,18 @@ class RankMenu(
         button(navRow + 4, myRankIcon(current))
 
         button(navRow + 6, Gui.item(plugin, "gui.button.rank-refresh", Material.CLOCK)) {
-            plugin.rank.request(type, force = true) { fresh ->
+            // 콜백이 돌아오기 전에 분류 전환 버튼을 누르면 옛 분류의 결과가 새 분류의
+            // 제목 위에 덮어써질 수 있다. 요청 당시의 분류를 따로 들고 있다가
+            // 콜백 시점에 아직 같은 분류를 보고 있는지 확인한다.
+            val requested = type
+            plugin.rank.request(requested, force = true) { fresh ->
+                if (requested != type) return@request
                 snapshot = fresh
                 openLater()
             }
-            plugin.rank.requestPersonal(viewer.uniqueId, type) { mine = it }
+            plugin.rank.requestPersonal(viewer.uniqueId, requested) { entry ->
+                if (requested == type) mine = entry
+            }
         }
 
         button(navRow + 8, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
@@ -84,7 +91,9 @@ class RankMenu(
     }
 
     private fun requestData() {
-        plugin.rank.request(type) { fresh ->
+        val requested = type
+        plugin.rank.request(requested) { fresh ->
+            if (requested != type) return@request
             snapshot = fresh
             if (fresh == null) {
                 plugin.messages.send(viewer, "rank.disabled")
@@ -92,7 +101,9 @@ class RankMenu(
             }
             openLater()
         }
-        plugin.rank.requestPersonal(viewer.uniqueId, type) { mine = it }
+        plugin.rank.requestPersonal(viewer.uniqueId, requested) { entry ->
+            if (requested == type) mine = entry
+        }
     }
 
     private fun rebuildIcons(current: RankService.Snapshot) {

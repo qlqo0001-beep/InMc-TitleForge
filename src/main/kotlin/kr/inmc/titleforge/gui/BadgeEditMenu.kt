@@ -76,7 +76,8 @@ class BadgeEditMenu(
                 placeholders = arrayOf("value" to "${badge.rarity.color}${badge.rarity.display}"),
             ),
         ) {
-            update(badge.copy(rarity = badge.rarity.next()))
+            val current = badge() ?: return@button
+            update(current.copy(rarity = current.rarity.next()))
         }
 
         button(
@@ -85,7 +86,8 @@ class BadgeEditMenu(
         ) {
             val held = viewer.inventory.itemInMainHand
             if (held.type.isItem && held.type != Material.AIR) {
-                update(badge.copy(icon = held.type))
+                val current = badge() ?: return@button
+                update(current.copy(icon = held.type))
             } else {
                 plugin.messages.send(viewer, "badge.need-held-item")
             }
@@ -98,7 +100,8 @@ class BadgeEditMenu(
                 placeholders = arrayOf("value" to if (badge.hidden) "숨김" else "공개"),
             ),
         ) {
-            update(badge.copy(hidden = !badge.hidden))
+            val current = badge() ?: return@button
+            update(current.copy(hidden = !current.hidden))
         }
 
         button(
@@ -111,7 +114,8 @@ class BadgeEditMenu(
                 event.click.isRightClick -> -1
                 else -> 1
             }
-            update(badge.copy(order = badge.order + delta))
+            val current = badge() ?: return@button
+            update(current.copy(order = current.order + delta))
         }
 
         button(
@@ -122,7 +126,8 @@ class BadgeEditMenu(
             ),
         ) { event ->
             if (event.click.isRightClick) {
-                update(badge.copy(permission = ""))
+                val current = badge() ?: return@button
+                update(current.copy(permission = ""))
                 return@button
             }
             promptText(

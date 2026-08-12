@@ -116,6 +116,17 @@ class BadgeService(private val plugin: TitleForgePlugin) {
      */
     private val pending = ConcurrentHashMap<String, Badge>()
 
+    /**
+     * `flushPending()`(전역 주기) 와 `flushPending(type,id)`(삭제·이름변경 직전) 가
+     * 서로 겹치지 않게 막는다. 겹치면: 전역 쪽이 이미 `pending` 에서 badge X 를 꺼내
+     * DB 쓰기를 시작했는데 아직 끝나기 전에, 삭제 쪽이 `pending.remove` 로는 아무것도
+     * 못 찾아 "낼 게 없다"고 판단하고 바로 delete SQL 을 실행해버릴 수 있다. SQLite 는
+     * 커넥션이 1개뿐이라 그 뒤에 전역 쪽의 (지우기 전 값으로) `REPLACE INTO` 가 실행되면
+     * 방금 지운 정의가 그대로 되살아난다. 드레인과 DB 쓰기 전체를 이 락으로 묶어
+     * 어느 한쪽이 끝난 뒤에만 다른 쪽이 시작하도록 강제한다.
+     */
+    private val flushLock = Any()
+
     private var flushTask: ScheduledTask? = null
 
     fun startFlushTask() {
@@ -131,22 +142,26 @@ class BadgeService(private val plugin: TitleForgePlugin) {
     /** 대기 중인 정의를 DB 에 내보낸다. **블로킹**이므로 비동기 컨텍스트에서만 호출할 것. */
     fun flushPending() {
         if (pending.isEmpty()) return
-        // 꺼내는 즉시 비운다. 쓰기 도중 들어온 편집은 다음 주기로 넘어간다.
-        val batch = pending.keys.toList().mapNotNull { key -> pending.remove(key) }
-        if (batch.isEmpty()) return
-        runCatching { plugin.storage.saveBadges(batch) }
-            .onFailure { error ->
-                // 실패분은 되돌려 다음 주기에 다시 시도한다. 그 사이 새 편집이 들어왔다면 그쪽이 최신이다.
-                batch.forEach { pending.putIfAbsent(it.key, it) }
-                plugin.logger.severe("칭호 저장 실패 (${batch.size}건): ${error.message}")
-            }
+        synchronized(flushLock) {
+            // 꺼내는 즉시 비운다. 쓰기 도중 들어온 편집은 다음 주기로 넘어간다.
+            val batch = pending.keys.toList().mapNotNull { key -> pending.remove(key) }
+            if (batch.isEmpty()) return
+            runCatching { plugin.storage.saveBadges(batch) }
+                .onFailure { error ->
+                    // 실패분은 되돌려 다음 주기에 다시 시도한다. 그 사이 새 편집이 들어왔다면 그쪽이 최신이다.
+                    batch.forEach { pending.putIfAbsent(it.key, it) }
+                    plugin.logger.severe("칭호 저장 실패 (${batch.size}건): ${error.message}")
+                }
+        }
     }
 
     /** 특정 칭호의 대기분만 먼저 내보낸다. 이름 변경·삭제 직전에 호출해 유령 행을 막는다. */
     private fun flushPending(type: BadgeType, id: String) {
-        val badge = pending.remove("${type.id}:$id") ?: return
-        runCatching { plugin.storage.saveBadge(badge) }
-            .onFailure { plugin.logger.severe("칭호 저장 실패 (${badge.key}): ${it.message}") }
+        synchronized(flushLock) {
+            val badge = pending.remove("${type.id}:$id") ?: return
+            runCatching { plugin.storage.saveBadge(badge) }
+                .onFailure { plugin.logger.severe("칭호 저장 실패 (${badge.key}): ${it.message}") }
+        }
     }
 
     /**
@@ -187,10 +202,8 @@ class BadgeService(private val plugin: TitleForgePlugin) {
         Sched.async(plugin) {
             // 대기 중인 쓰기가 삭제 뒤에 나가면 지운 정의가 되살아난다.
             flushPending(type, id)
-            runCatching {
-                plugin.storage.deleteBadge(type, id)
-                plugin.storage.purgeOwnership(type, id)
-            }.onFailure { plugin.logger.severe("칭호 삭제 실패 ($id): ${it.message}") }
+            runCatching { plugin.storage.deleteBadge(type, id) }
+                .onFailure { plugin.logger.severe("칭호 삭제 실패 ($id): ${it.message}") }
         }
         refreshProfiles(affected)
         return removed

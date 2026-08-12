@@ -57,8 +57,12 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
 
         for (player in players) {
             if (display.tablist.enabled) {
-                runCatching { plugin.tablist.refresh(player) }
-                    .onFailure { plugin.logger.warning("탭리스트 갱신 실패 (${player.name}): ${it.message}") }
+                // TokenRenderer 가 player.location/world/ping 을 읽고 그 플레이어에게 패킷을
+                // 직접 보내므로, 아래 이름표 갱신과 마찬가지로 소유 스레드에서 실행해야 한다.
+                Sched.entity(plugin, player) {
+                    runCatching { plugin.tablist.refresh(player) }
+                        .onFailure { plugin.logger.warning("탭리스트 갱신 실패 (${player.name}): ${it.message}") }
+                }
             }
             if (display.nametag.enabled) {
                 Sched.entity(plugin, player) {

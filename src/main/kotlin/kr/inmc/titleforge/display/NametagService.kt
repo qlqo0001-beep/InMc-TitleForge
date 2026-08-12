@@ -189,8 +189,10 @@ class NametagService(private val plugin: TitleForgePlugin) {
     /**
      * 뷰어별 시야 판정을 다시 계산한다. [DisplayTicker] 가 `visibility-check-ticks` 주기로 호출한다.
      *
-     * 대상(소유자)마다 온라인 전원을 훑으므로 인원수 제곱에 비례한다. 다른 세계에 있거나
-     * `view-range` 밖이면 레이캐스트 없이 즉시 숨김 처리해 비용을 줄인다.
+     * 대상(소유자)마다 온라인 전원을 훑으므로 인원수 제곱에 비례한다. `owner.location` 은
+     * 이 함수를 호출하는 전역 스레드가 아니라 owner 를 소유한 스레드에서 읽어야 안전하므로
+     * (Folia), owner 단위로 한 번 더 스케줄한다. viewer 쪽 좌표·시야 판정은 원래도 viewer
+     * 소유 스레드([applyVisibility] 호출부)에서 이뤄진다.
      */
     fun refreshVisibility() {
         if (!settings.enabled || !settings.hideWhenNotVisible) return
@@ -200,17 +202,27 @@ class NametagService(private val plugin: TitleForgePlugin) {
         for ((ownerUuid, handle) in handles) {
             if (handle.displays.isEmpty()) continue
             val owner = Bukkit.getPlayer(ownerUuid) ?: continue
-            val ownerLocation = owner.location
 
-            for (viewer in online) {
-                if (viewer.uniqueId == ownerUuid) continue
-                val reachable = viewer.world == owner.world &&
-                    viewer.location.distanceSquared(ownerLocation) <= rangeSq
+            Sched.entity(plugin, owner) {
+                val ownerLocation = owner.location
+                val ownerWorld = owner.world
 
-                // 실제 hideEntity/showEntity 호출은 뷰어를 소유한 스레드에서만 안전하다(Folia).
-                Sched.entity(plugin, viewer) {
-                    val visible = reachable && runCatching { viewer.hasLineOfSight(owner) }.getOrDefault(true)
-                    applyVisibility(owner, handle, viewer, visible)
+                for (viewer in online) {
+                    if (viewer.uniqueId == ownerUuid) continue
+
+                    // 실제 hideEntity/showEntity 호출과 viewer.location 읽기는 viewer 를
+                    // 소유한 스레드에서만 안전하다(Folia).
+                    Sched.entity(plugin, viewer) {
+                        val reachable = viewer.world == ownerWorld &&
+                            viewer.location.distanceSquared(ownerLocation) <= rangeSq
+                        // 이미 숨겨진 채로 범위를 벗어나 있던 상대라면 매 주기 레이캐스트를
+                        // 다시 돌릴 필요가 없다 — 상태가 바뀔 때(다시 가까워질 때)만 갱신하면 된다.
+                        if (!reachable && hiddenFrom[ownerUuid]?.contains(viewer.uniqueId) == true) {
+                            return@entity
+                        }
+                        val visible = reachable && runCatching { viewer.hasLineOfSight(owner) }.getOrDefault(true)
+                        applyVisibility(owner, handle, viewer, visible)
+                    }
                 }
             }
         }
@@ -286,16 +298,27 @@ class NametagService(private val plugin: TitleForgePlugin) {
 
     // ── 바닐라 이름표 숨김 ─────────────────────────────────────────────
 
+    /**
+     * `refresh()` 는 플레이어마다 다른 리전 스레드에서 동시에 실행될 수 있는데(Folia),
+     * 여기서 건드리는 팀은 서버에 **하나뿐인 공유 객체**다. Bukkit 의 Team/Scoreboard API 는
+     * 스레드 안전을 보장하지 않으므로 동시 mutate 를 막기 위해 락으로 감싼다.
+     */
+    private val teamLock = Any()
+
     private fun hideVanillaNametag(player: Player) {
         if (!settings.hideVanillaNametag) return
-        runCatching {
-            val team = nametagTeam() ?: return
-            if (!team.hasEntry(player.name)) team.addEntry(player.name)
+        synchronized(teamLock) {
+            runCatching {
+                val team = nametagTeam() ?: return@synchronized
+                if (!team.hasEntry(player.name)) team.addEntry(player.name)
+            }
         }
     }
 
     private fun restoreVanillaNametag(player: Player) {
-        runCatching { nametagTeam()?.removeEntry(player.name) }
+        synchronized(teamLock) {
+            runCatching { nametagTeam()?.removeEntry(player.name) }
+        }
     }
 
     private fun nametagTeam(): Team? = runCatching {
