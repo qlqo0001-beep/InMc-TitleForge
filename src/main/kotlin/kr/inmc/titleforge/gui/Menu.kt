@@ -2,6 +2,7 @@ package kr.inmc.titleforge.gui
 
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.util.Items
+import kr.inmc.titleforge.util.Sched
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
@@ -48,6 +49,18 @@ abstract class Menu(
         viewer.openInventory(inventory)
     }
 
+    /**
+     * 다음 틱에 연다.
+     *
+     * `InventoryClickEvent` / `InventoryCloseEvent` 처리 도중 인벤토리를 교체하면 클라이언트가
+     * 어긋날 수 있으므로, 메뉴 전환은 항상 이 메서드를 쓴다.
+     */
+    fun openLater() {
+        Sched.entity(plugin, viewer) {
+            if (viewer.isOnline) open()
+        }
+    }
+
     /** 같은 창을 그대로 다시 그린다. 제목이 바뀌면 [open] 을 쓸 것. */
     fun redraw() {
         handlers.clear()
@@ -57,7 +70,13 @@ abstract class Menu(
     }
 
     protected fun button(slot: Int, item: ItemStack, handler: ((InventoryClickEvent) -> Unit)? = null) {
-        if (slot !in 0 until size) return
+        if (slot !in 0 until size) {
+            // 조용히 사라지면 레이아웃 실수를 못 찾는다.
+            if (plugin.settings.debug) {
+                plugin.logger.warning("[GUI] ${javaClass.simpleName}: 슬롯 $slot 이(가) 범위(0~${size - 1})를 벗어났습니다.")
+            }
+            return
+        }
         inventory.setItem(slot, item)
         if (handler != null) handlers[slot] = handler
     }

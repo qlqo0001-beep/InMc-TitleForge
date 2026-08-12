@@ -9,8 +9,8 @@ import kr.inmc.titleforge.config.Settings
 import kr.inmc.titleforge.gui.Menu
 import kr.inmc.titleforge.hook.VaultHook
 import kr.inmc.titleforge.listener.PlayerListener
-import kr.inmc.titleforge.nickname.AnvilNicknameInput
-import kr.inmc.titleforge.nickname.ChatNicknameInput
+import kr.inmc.titleforge.input.AnvilTextInput
+import kr.inmc.titleforge.input.ChatTextInput
 import kr.inmc.titleforge.nickname.NameDisplayService
 import kr.inmc.titleforge.nickname.NicknameService
 import kr.inmc.titleforge.player.ProfileManager
@@ -50,10 +50,10 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var nicknames: NicknameService
         private set
 
-    lateinit var anvilInput: AnvilNicknameInput
+    lateinit var anvilInput: AnvilTextInput
         private set
 
-    lateinit var chatInput: ChatNicknameInput
+    lateinit var chatInput: ChatTextInput
         private set
 
     var vault: VaultHook? = null
@@ -74,8 +74,8 @@ class TitleForgePlugin : JavaPlugin() {
         badgeService = BadgeService(this)
         nameDisplay = NameDisplayService(this)
         nicknames = NicknameService(this)
-        anvilInput = AnvilNicknameInput(this)
-        chatInput = ChatNicknameInput(this)
+        anvilInput = AnvilTextInput(this)
+        chatInput = ChatTextInput(this)
 
         if (!setupStorage()) {
             logger.severe("저장소 초기화에 실패해 플러그인을 비활성화합니다.")

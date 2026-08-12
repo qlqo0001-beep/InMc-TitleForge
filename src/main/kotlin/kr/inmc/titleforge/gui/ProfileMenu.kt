@@ -101,7 +101,7 @@ class ProfileMenu(
         slotButton(31, EquipSlot.STAT, display.statTitleComponent(profile))
         slotButton(33, EquipSlot.SEAL, display.sealComponent(profile))
 
-        button(40, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) { MainMenu(plugin, viewer).open() }
+        button(40, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) { MainMenu(plugin, viewer).openLater() }
         fill()
     }
 
@@ -119,7 +119,7 @@ class ProfileMenu(
                 ) + if (self) listOf(plugin.messages.component("gui.lore.slot-open")) else emptyList(),
             ),
         ) {
-            if (self) BadgeListMenu(plugin, viewer, equipSlot.type).open()
+            if (self) BadgeListMenu(plugin, viewer, equipSlot.type).openLater()
         }
     }
 

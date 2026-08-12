@@ -94,13 +94,13 @@ class BadgeListMenu(
         if (page > 0) {
             button(navRow, Gui.item(plugin, "gui.button.prev", Material.ARROW)) {
                 page--
-                open()
+                openLater()
             }
         }
         if (page < max - 1) {
             button(navRow + 8, Gui.item(plugin, "gui.button.next", Material.ARROW)) {
                 page++
-                open()
+                openLater()
             }
         }
 
@@ -108,11 +108,11 @@ class BadgeListMenu(
         button(navRow + 2, Gui.item(plugin, filterPath, Material.HOPPER)) {
             showUnowned = !showUnowned
             page = 0
-            open()
+            openLater()
         }
 
         button(navRow + 4, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
-            MainMenu(plugin, viewer).open()
+            MainMenu(plugin, viewer).openLater()
         }
 
         button(navRow + 6, Gui.item(plugin, "gui.button.unequip", Material.STRUCTURE_VOID)) {

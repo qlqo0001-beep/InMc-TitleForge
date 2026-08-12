@@ -5,6 +5,7 @@ import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.player.EquipSlot
 import kr.inmc.titleforge.player.PlayerProfile
+import kr.inmc.titleforge.stat.StatCategory
 import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.util.Items
 import kr.inmc.titleforge.util.Text
@@ -18,6 +19,10 @@ import java.util.Date
 object Gui {
 
     private val DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd")
+
+    private val DIVIDER: Component = Text.mini("<dark_gray><strikethrough>                    ")
+
+    private const val NONE = "-"
 
     fun item(
         plugin: TitleForgePlugin,
@@ -103,6 +108,100 @@ object Gui {
             else -> settings.iconLocked
         }
         return Items.of(material, badge.nameComponent, lore, glow = equippedSlots.isNotEmpty())
+    }
+
+    /**
+     * 스텟 편집 아이콘. 관리자가 문서를 찾지 않아도 되도록
+     * 분류 · 바닐라 Attribute 키 · 적용 방식 · 기본값 · 권장 범위를 모두 로어에 담고,
+     * **장착/보유 값을 함께** 보여준다.
+     */
+    fun statIcon(
+        plugin: TitleForgePlugin,
+        stat: StatType,
+        equipValue: Double,
+        ownValue: Double,
+    ): ItemStack {
+        val messages = plugin.messages
+        val lore = ArrayList<Component>()
+
+        lore += Text.mini("${stat.category.color}[${stat.category.display}]")
+        if (stat.vanilla) {
+            lore += messages.component("gui.lore.stat-attribute", "key" to "minecraft:${stat.attributeKey}")
+        } else {
+            lore += messages.component("gui.lore.stat-custom")
+        }
+
+        lore += DIVIDER
+        lore += messages.component(
+            "gui.lore.stat-equip-value",
+            "value" to if (equipValue == 0.0) NONE else stat.format(equipValue),
+        )
+        lore += messages.component(
+            "gui.lore.stat-own-value",
+            "value" to if (ownValue == 0.0) NONE else stat.format(ownValue),
+        )
+
+        lore += DIVIDER
+        lore += messages.component("gui.lore.stat-operation", "value" to stat.operationDisplay)
+        if (stat.vanillaBase != null) {
+            lore += messages.component(
+                "gui.lore.stat-base",
+                "value" to stat.format(stat.vanillaBase).removePrefix("+"),
+            )
+        }
+        lore += messages.component("gui.lore.stat-range", "value" to stat.softRangeDisplay())
+        if (stat.suffix == "%" || stat.displayScale != 1.0) {
+            lore += messages.component("gui.lore.stat-unit-hint")
+        }
+
+        lore += DIVIDER
+        lore += messages.component("gui.lore.stat-click-equip")
+        lore += messages.component("gui.lore.stat-click-own")
+        if (equipValue != 0.0) lore += messages.component("gui.lore.stat-click-remove-equip")
+        if (ownValue != 0.0) lore += messages.component("gui.lore.stat-click-remove-own")
+
+        val configured = equipValue != 0.0 || ownValue != 0.0
+        return Items.of(stat.icon, statTitle(plugin, stat, configured), lore, glow = configured)
+    }
+
+    private fun statTitle(plugin: TitleForgePlugin, stat: StatType, configured: Boolean): Component =
+        plugin.messages.component(
+            if (configured) "gui.lore.stat-name-set" else "gui.lore.stat-name-unset",
+            "stat" to stat.display,
+            "id" to stat.id,
+        )
+
+    /** 분류 라벨. 해당 분류의 장착/보유 합계를 함께 보여준다. */
+    fun categoryLabel(
+        plugin: TitleForgePlugin,
+        category: StatCategory,
+        equipStats: Map<StatType, Double>,
+        ownStats: Map<StatType, Double>,
+    ): ItemStack {
+        val stats = category.stats()
+        val configured = stats.count { (equipStats[it] ?: 0.0) != 0.0 || (ownStats[it] ?: 0.0) != 0.0 }
+        val lore = ArrayList<Component>()
+        lore += plugin.messages.component(
+            "gui.lore.category-summary",
+            "configured" to configured,
+            "total" to stats.size,
+        )
+        stats.forEach { stat ->
+            val equip = equipStats[stat] ?: 0.0
+            val own = ownStats[stat] ?: 0.0
+            if (equip == 0.0 && own == 0.0) return@forEach
+            lore += Text.mini(
+                "<dark_gray>  ▪ <gray><stat> <dark_gray>| <aqua><equip> <dark_gray>/ <green><own>",
+                "stat" to stat.display,
+                "equip" to stat.format(equip),
+                "own" to stat.format(own),
+            )
+        }
+        return Items.of(
+            category.icon,
+            Text.mini("${category.color}<bold><name></bold>", "name" to category.display),
+            lore,
+        )
     }
 
     fun statLines(stats: Map<StatType, Double>): List<Component> =

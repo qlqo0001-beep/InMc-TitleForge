@@ -1,6 +1,7 @@
 package kr.inmc.titleforge.gui
 
 import kr.inmc.titleforge.TitleForgePlugin
+import kr.inmc.titleforge.util.Sched
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
@@ -36,7 +37,10 @@ class ConfirmMenu(
         fill()
     }
 
+    /** ESC 로 닫아도 '취소' 와 동일하게 처리해 호출한 메뉴로 되돌아간다. */
     override fun onClose() {
-        if (!decided) decided = true
+        if (decided) return
+        decided = true
+        Sched.entity(plugin, viewer) { onCancel() }
     }
 }

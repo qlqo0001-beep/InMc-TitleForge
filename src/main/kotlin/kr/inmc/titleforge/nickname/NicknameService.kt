@@ -39,7 +39,8 @@ class NicknameService(private val plugin: TitleForgePlugin) {
         }
 
         val input = if (config.inputMode == Settings.InputMode.CHAT) plugin.chatInput else plugin.anvilInput
-        input.prompt(player, profile.nickname ?: player.name) { result ->
+        val prompt = plugin.messages.prefix().append(plugin.messages.component("nickname.prompt-chat"))
+        input.prompt(player, profile.nickname ?: player.name, prompt) { result ->
             if (result == null) {
                 plugin.messages.send(player, "nickname.cancelled")
             } else {

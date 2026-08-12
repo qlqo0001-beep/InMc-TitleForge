@@ -178,11 +178,18 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
         }
     }
 
-    /** 칭호 정의가 바뀌었을 때 온라인 전원 갱신. */
+    /** 칭호 스텟이 바뀌었을 때 온라인 전원 재계산 + 표시 갱신. */
     fun refreshAllOnline() {
         for (player in Bukkit.getOnlinePlayers()) {
             val profile = cache[player.uniqueId] ?: continue
             refreshStats(profile)
+            plugin.nameDisplay.refresh(player)
+        }
+    }
+
+    /** 이름·아이콘 등 표시 요소만 바뀐 경우. 스텟 재계산을 건너뛴다. */
+    fun refreshDisplayOnline() {
+        for (player in Bukkit.getOnlinePlayers()) {
             plugin.nameDisplay.refresh(player)
         }
     }

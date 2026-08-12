@@ -3,24 +3,32 @@ package kr.inmc.titleforge.gui
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
-import kr.inmc.titleforge.stat.StatType
-import kr.inmc.titleforge.stat.Stats
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
 
-/** 칭호/인장 개별 편집 창. */
+/**
+ * 칭호/인장 개별 편집 창.
+ *
+ * 편집 대상은 ID 로만 들고 있고 렌더링 때마다 레지스트리에서 최신 정의를 다시 읽는다.
+ * 다른 관리자가 동시에 수정해도 옛 스냅샷으로 덮어쓰지 않는다.
+ */
 class BadgeEditMenu(
     plugin: TitleForgePlugin,
     viewer: Player,
-    private var badge: Badge,
+    private val type: BadgeType,
+    private val badgeId: String,
 ) : Menu(plugin, viewer, rows = 5) {
 
-    override fun title(): Component = plugin.messages.component("gui.edit-title", "id" to badge.id)
+    constructor(plugin: TitleForgePlugin, viewer: Player, badge: Badge) :
+        this(plugin, viewer, badge.type, badge.id)
+
+    private fun badge(): Badge? = plugin.badges.get(type, badgeId)
+
+    override fun title(): Component = plugin.messages.component("gui.edit-title", "id" to badgeId)
 
     private fun update(updated: Badge) {
-        badge = updated
         plugin.badgeService.persist(updated)
         redraw()
     }
@@ -30,23 +38,31 @@ class BadgeEditMenu(
             viewer.closeInventory()
             return
         }
+        val badge = badge() ?: run {
+            plugin.messages.send(viewer, "badge.not-found", "type" to type.display, "id" to badgeId)
+            AdminMenu(plugin, viewer, type).openLater()
+            return
+        }
 
-        button(4, Gui.badgeIcon(plugin, null, badge, owned = true, locked = false, equippedSlots = emptyList(), adminMode = true))
+        button(
+            4,
+            Gui.badgeIcon(plugin, null, badge, owned = true, locked = false, equippedSlots = emptyList(), adminMode = true),
+        )
 
         button(
             10,
             Gui.item(plugin, "gui.button.rename", Material.NAME_TAG, placeholders = arrayOf("value" to badge.displayName)),
         ) {
-            val current = badge
-            plugin.anvilInput.prompt(viewer, current.plainName) { input ->
-                if (input != null) {
-                    update(current.copy(displayName = input))
-                    plugin.messages.send(
-                        viewer, "badge.edited",
-                        "type" to current.type.display, "id" to current.id, "field" to "이름",
-                    )
-                }
-                BadgeEditMenu(plugin, viewer, badge).open()
+            promptText(
+                initial = badge.plainName,
+                messageKey = "input.prompt-name",
+            ) { input ->
+                val current = badge() ?: return@promptText
+                update(current.copy(displayName = input))
+                plugin.messages.send(
+                    viewer, "badge.edited",
+                    "type" to current.type.display, "id" to current.id, "field" to "이름",
+                )
             }
         }
 
@@ -67,6 +83,8 @@ class BadgeEditMenu(
             val held = viewer.inventory.itemInMainHand
             if (held.type.isItem && held.type != Material.AIR) {
                 update(badge.copy(icon = held.type))
+            } else {
+                plugin.messages.send(viewer, "badge.need-held-item")
             }
         }
 
@@ -104,128 +122,70 @@ class BadgeEditMenu(
                 update(badge.copy(permission = ""))
                 return@button
             }
-            val current = badge
-            plugin.anvilInput.prompt(viewer, current.permission.ifBlank { "titleforge.badge.${current.id}" }) { input ->
-                if (input != null) update(current.copy(permission = input.trim()))
-                BadgeEditMenu(plugin, viewer, badge).open()
+            promptText(
+                initial = badge.permission.ifBlank { "titleforge.badge.${badge.id}" },
+                messageKey = "input.prompt-permission",
+            ) { input ->
+                val current = badge() ?: return@promptText
+                update(current.copy(permission = input.trim()))
+                plugin.messages.send(
+                    viewer, "badge.edited",
+                    "type" to current.type.display, "id" to current.id, "field" to "권한",
+                )
             }
         }
 
+        // 장착/보유 스텟은 하나의 통합 편집 창에서 다룬다.
         if (badge.type == BadgeType.TITLE) {
-            button(
-                29,
-                Gui.item(
-                    plugin, "gui.button.stats-equip", Material.DIAMOND_SWORD,
-                    extraLore = Gui.statLines(badge.equipStats),
-                ),
-            ) {
-                StatEditMenu(plugin, viewer, badge, equipSide = true).open()
+            val summary = ArrayList<Component>()
+            summary += plugin.messages.component("gui.lore.equip-stats")
+            summary += Gui.statLines(badge.equipStats).ifEmpty {
+                listOf(plugin.messages.component("gui.lore.no-stats"))
+            }
+            summary += Component.empty()
+            summary += plugin.messages.component("gui.lore.own-stats")
+            summary += Gui.statLines(badge.ownStats).ifEmpty {
+                listOf(plugin.messages.component("gui.lore.no-stats"))
             }
             button(
                 31,
-                Gui.item(
-                    plugin, "gui.button.stats-own", Material.BOOKSHELF,
-                    extraLore = Gui.statLines(badge.ownStats),
-                ),
+                Gui.item(plugin, "gui.button.stats-edit", Material.DIAMOND_SWORD, extraLore = summary),
             ) {
-                StatEditMenu(plugin, viewer, badge, equipSide = false).open()
+                StatEditMenu(plugin, viewer, badge.id).openLater()
             }
         } else {
-            button(30, Gui.item(plugin, "gui.button.seal-no-stat", Material.BARRIER))
+            button(31, Gui.item(plugin, "gui.button.seal-no-stat", Material.BARRIER))
         }
 
         button(33, Gui.item(plugin, "gui.button.delete", Material.LAVA_BUCKET)) {
-            val current = badge
             ConfirmMenu(
                 plugin, viewer,
                 description = plugin.messages.component(
                     "gui.lore.delete-target",
-                    "type" to current.type.display,
-                    "name" to current.nameComponent,
+                    "type" to badge.type.display,
+                    "name" to badge.nameComponent,
                 ),
                 onConfirm = {
-                    plugin.badgeService.delete(current.type, current.id)
-                    plugin.messages.send(
-                        viewer, "badge.deleted",
-                        "type" to current.type.display, "id" to current.id,
-                    )
-                    AdminMenu(plugin, viewer, current.type).open()
+                    plugin.badgeService.delete(type, badgeId)
+                    plugin.messages.send(viewer, "badge.deleted", "type" to type.display, "id" to badgeId)
+                    AdminMenu(plugin, viewer, type).openLater()
                 },
-                onCancel = { BadgeEditMenu(plugin, viewer, current).open() },
-            ).open()
+                onCancel = { openLater() },
+            ).openLater()
         }
 
         button(40, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
-            AdminMenu(plugin, viewer, badge.type).open()
-        }
-        fill()
-    }
-}
-
-/** 장착/보유 스텟 수치 조정 창. */
-class StatEditMenu(
-    plugin: TitleForgePlugin,
-    viewer: Player,
-    private var badge: Badge,
-    private val equipSide: Boolean,
-) : Menu(plugin, viewer, rows = 6) {
-
-    override fun title(): Component = plugin.messages.component(
-        if (equipSide) "gui.stat-equip-title" else "gui.stat-own-title",
-        "id" to badge.id,
-    )
-
-    private fun stats(): Map<StatType, Double> = if (equipSide) badge.equipStats else badge.ownStats
-
-    override fun render() {
-        if (!viewer.hasPermission("titleforge.admin")) {
-            viewer.closeInventory()
-            return
-        }
-
-        StatType.entries.forEachIndexed { index, stat ->
-            val value = stats()[stat] ?: 0.0
-            button(
-                index,
-                Gui.item(
-                    plugin,
-                    if (stat.vanilla) "gui.button.stat-entry" else "gui.button.stat-entry-custom",
-                    if (value == 0.0) Material.GRAY_DYE else Material.LIME_DYE,
-                    placeholders = arrayOf(
-                        "stat" to stat.display,
-                        "id" to stat.id,
-                        "value" to stat.format(value),
-                    ),
-                ),
-            ) { event ->
-                val step = when {
-                    event.click == ClickType.MIDDLE -> return@button reset(stat)
-                    event.click == ClickType.SHIFT_LEFT -> 5.0
-                    event.click == ClickType.SHIFT_RIGHT -> -5.0
-                    event.click.isRightClick -> -0.5
-                    else -> 0.5
-                }
-                apply(stat, (stats()[stat] ?: 0.0) + step)
-            }
-        }
-
-        button(size - 5, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
-            BadgeEditMenu(plugin, viewer, badge).open()
+            AdminMenu(plugin, viewer, type).openLater()
         }
         fill()
     }
 
-    private fun reset(stat: StatType) = apply(stat, 0.0)
-
-    private fun apply(stat: StatType, value: Double) {
-        val rounded = Math.round(value * 100.0) / 100.0
-        val updated = if (equipSide) {
-            badge.copy(equipStats = Stats.with(badge.equipStats, stat, rounded))
-        } else {
-            badge.copy(ownStats = Stats.with(badge.ownStats, stat, rounded))
+    /** 모루 입력창으로 문자열을 받고, 끝나면 이 창으로 돌아온다. */
+    private fun promptText(initial: String, messageKey: String, onInput: (String) -> Unit) {
+        val prompt = plugin.messages.prefix().append(plugin.messages.component(messageKey))
+        plugin.anvilInput.prompt(viewer, initial, prompt) { input ->
+            if (input != null) onInput(input)
+            openLater()
         }
-        badge = updated
-        plugin.badgeService.persist(updated)
-        redraw()
     }
 }

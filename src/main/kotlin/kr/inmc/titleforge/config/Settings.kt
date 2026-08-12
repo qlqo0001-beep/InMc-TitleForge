@@ -117,6 +117,8 @@ class Settings private constructor(
     class GuiSettings(
         val pageSize: Int,
         val showUnownedByDefault: Boolean,
+        /** 채팅 값 입력 대기 시간(초). 0 이면 무제한. */
+        val chatInputTimeoutSeconds: Long,
         val filler: Material,
         val iconTitle: Material,
         val iconSeal: Material,
@@ -196,6 +198,8 @@ class Settings private constructor(
             val gui = GuiSettings(
                 pageSize = config.getInt("gui.page-size", 45).coerceIn(9, 45).let { it - it % 9 },
                 showUnownedByDefault = config.getBoolean("gui.show-unowned-by-default", true),
+                chatInputTimeoutSeconds = config.getLong("gui.chat-input-timeout-seconds", 60L)
+                    .coerceAtLeast(0L),
                 filler = material(config.getString("gui.filler"), Material.GRAY_STAINED_GLASS_PANE),
                 iconTitle = material(config.getString("gui.icons.title"), Material.NAME_TAG),
                 iconSeal = material(config.getString("gui.icons.seal"), Material.HEART_OF_THE_SEA),

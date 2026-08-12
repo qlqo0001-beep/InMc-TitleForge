@@ -26,6 +26,10 @@ dependencies {
     implementation("com.zaxxer:HikariCP:7.0.2")
     implementation("org.xerial:sqlite-jdbc:3.50.3.0")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.4")
+
+    // 순수 로직 단위 테스트 (StatLayout / StatValueParser / Stats)
+    testImplementation(kotlin("test"))
+    testImplementation("io.papermc.paper:paper-api:${property("paperApiVersion")}")
 }
 
 kotlin {
@@ -50,6 +54,13 @@ tasks {
     compileKotlin {
         // 빌드 재현성: 경고를 놓치지 않도록
         compilerOptions.extraWarnings.set(true)
+    }
+
+    test {
+        useJUnitPlatform()
+        testLogging {
+            events("passed", "skipped", "failed")
+        }
     }
 
     shadowJar {

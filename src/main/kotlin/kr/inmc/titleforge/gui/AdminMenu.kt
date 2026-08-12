@@ -54,12 +54,12 @@ class AdminMenu(
                         onConfirm = {
                             plugin.badgeService.delete(badge.type, badge.id)
                             plugin.messages.send(viewer, "badge.deleted", "type" to badge.type.display, "id" to badge.id)
-                            AdminMenu(plugin, viewer, type).open()
+                            AdminMenu(plugin, viewer, type).openLater()
                         },
-                        onCancel = { AdminMenu(plugin, viewer, type).open() },
-                    ).open()
+                        onCancel = { AdminMenu(plugin, viewer, type).openLater() },
+                    ).openLater()
                 } else {
-                    BadgeEditMenu(plugin, viewer, badge).open()
+                    BadgeEditMenu(plugin, viewer, badge).openLater()
                 }
             }
         }
@@ -68,29 +68,30 @@ class AdminMenu(
         if (page > 0) {
             button(navRow, Gui.item(plugin, "gui.button.prev", Material.ARROW)) {
                 page--
-                open()
+                openLater()
             }
         }
         if (page < max - 1) {
             button(navRow + 8, Gui.item(plugin, "gui.button.next", Material.ARROW)) {
                 page++
-                open()
+                openLater()
             }
         }
 
         button(navRow + 2, Gui.item(plugin, "gui.button.type-toggle", Material.COMPARATOR, placeholders = arrayOf("type" to type.display))) {
             type = if (type == BadgeType.TITLE) BadgeType.SEAL else BadgeType.TITLE
             page = 0
-            open()
+            openLater()
         }
 
-        button(navRow + 4, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) { MainMenu(plugin, viewer).open() }
+        button(navRow + 4, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) { MainMenu(plugin, viewer).openLater() }
 
         button(navRow + 6, Gui.item(plugin, "gui.button.create", Material.WRITABLE_BOOK, placeholders = arrayOf("type" to type.display))) {
             val creating = type
-            plugin.anvilInput.prompt(viewer, "new_id") { input ->
+            val prompt = plugin.messages.prefix().append(plugin.messages.component("input.prompt-badge-id"))
+            plugin.anvilInput.prompt(viewer, "new_id", prompt) { input ->
                 if (input == null) {
-                    AdminMenu(plugin, viewer, creating).open()
+                    AdminMenu(plugin, viewer, creating).openLater()
                     return@prompt
                 }
                 val id = input.lowercase().replace(' ', '_')
@@ -115,11 +116,11 @@ class AdminMenu(
                             viewer, "badge.created",
                             "type" to creating.display, "name" to badge.nameComponent, "id" to id,
                         )
-                        BadgeEditMenu(plugin, viewer, badge).open()
+                        BadgeEditMenu(plugin, viewer, badge).openLater()
                         return@prompt
                     }
                 }
-                AdminMenu(plugin, viewer, creating).open()
+                AdminMenu(plugin, viewer, creating).openLater()
             }
         }
 

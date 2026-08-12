@@ -23,7 +23,7 @@ class MainMenu(plugin: TitleForgePlugin, viewer: Player) : Menu(plugin, viewer, 
                     "total" to plugin.badges.count(BadgeType.TITLE),
                 ),
             ),
-        ) { BadgeListMenu(plugin, viewer, BadgeType.TITLE).open() }
+        ) { BadgeListMenu(plugin, viewer, BadgeType.TITLE).openLater() }
 
         button(
             12,
@@ -34,15 +34,15 @@ class MainMenu(plugin: TitleForgePlugin, viewer: Player) : Menu(plugin, viewer, 
                     "total" to plugin.badges.count(BadgeType.SEAL),
                 ),
             ),
-        ) { BadgeListMenu(plugin, viewer, BadgeType.SEAL).open() }
+        ) { BadgeListMenu(plugin, viewer, BadgeType.SEAL).openLater() }
 
         button(14, Gui.item(plugin, "gui.button.profile", gui.iconProfile)) {
-            ProfileMenu(plugin, viewer, viewer).open()
+            ProfileMenu(plugin, viewer, viewer).openLater()
         }
 
         if (viewer.hasPermission("titleforge.admin")) {
             button(16, Gui.item(plugin, "gui.button.admin", gui.iconAdmin)) {
-                AdminMenu(plugin, viewer, BadgeType.TITLE).open()
+                AdminMenu(plugin, viewer, BadgeType.TITLE).openLater()
             }
         }
 

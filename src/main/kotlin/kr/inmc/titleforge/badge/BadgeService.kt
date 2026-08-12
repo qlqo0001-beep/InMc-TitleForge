@@ -101,15 +101,30 @@ class BadgeService(private val plugin: TitleForgePlugin) {
         return true
     }
 
-    /** 정의 생성/수정 후 반영. 레지스트리는 즉시, DB 는 비동기로 저장한다. */
+    /**
+     * 정의 생성/수정 후 반영. 레지스트리는 즉시, DB 는 비동기로 저장한다.
+     *
+     * 스텟이 실제로 바뀐 경우에만 온라인 전원을 재계산한다. 이름·아이콘만 바꿨는데
+     * 전 서버 Attribute 를 다시 계산할 이유가 없다.
+     */
     fun persist(badge: Badge) {
         val normalized = badge.normalized()
+        val previous = plugin.badges.get(normalized.type, normalized.id)
+        val statsChanged = previous == null ||
+            previous.equipStats != normalized.equipStats ||
+            previous.ownStats != normalized.ownStats
+
         plugin.badges.put(normalized)
         Sched.async(plugin) {
             runCatching { plugin.storage.saveBadge(normalized) }
                 .onFailure { plugin.logger.severe("칭호 저장 실패 (${normalized.key}): ${it.message}") }
         }
-        plugin.profiles.refreshAllOnline()
+
+        if (statsChanged) {
+            plugin.profiles.refreshAllOnline()
+        } else {
+            plugin.profiles.refreshDisplayOnline()
+        }
     }
 
     /** 정의 삭제. 보유 기록과 장착 상태까지 정리한다. */

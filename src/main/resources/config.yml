@@ -105,6 +105,9 @@ gui:
   page-size: 45
   # 미보유 항목도 목록에 노출할지 (기본값. GUI 안에서 토글 가능)
   show-unowned-by-default: true
+  # 스텟 값을 채팅으로 입력할 때 대기 시간(초). 0 이면 무제한.
+  # 입력한 문장은 취소 처리되어 채팅·콘솔 어디에도 기록되지 않습니다.
+  chat-input-timeout-seconds: 60
   filler: GRAY_STAINED_GLASS_PANE
   icons:
     title: NAME_TAG
