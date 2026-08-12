@@ -19,6 +19,12 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
 
     private var task: ScheduledTask? = null
 
+    /**
+     * 시야 가림(레이캐스트) 판정은 텍스트 갱신보다 훨씬 비싸서 별도 주기로 돈다.
+     * `refresh-ticks` 가 얼마든 실제 경과 틱을 이걸로 누적해 독립적인 주기를 만든다.
+     */
+    private var ticksSinceVisibilityCheck = 0L
+
     fun start() {
         stop()
         val display = plugin.settings.display
@@ -29,6 +35,7 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
             return
         }
 
+        ticksSinceVisibilityCheck = 0L
         val period = display.refreshTicks
         task = Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, { tick() }, period, period)
         plugin.logger.info("표시 갱신 티커 시작 (${period}틱 주기)")
@@ -58,6 +65,15 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
                     runCatching { plugin.nametags.refresh(player) }
                         .onFailure { plugin.logger.warning("이름표 갱신 실패 (${player.name}): ${it.message}") }
                 }
+            }
+        }
+
+        if (display.nametag.enabled && display.nametag.hideWhenNotVisible) {
+            ticksSinceVisibilityCheck += display.refreshTicks
+            if (ticksSinceVisibilityCheck >= display.nametag.visibilityCheckTicks) {
+                ticksSinceVisibilityCheck = 0L
+                runCatching { plugin.nametags.refreshVisibility() }
+                    .onFailure { plugin.logger.warning("이름표 시야 판정 실패: ${it.message}") }
             }
         }
 

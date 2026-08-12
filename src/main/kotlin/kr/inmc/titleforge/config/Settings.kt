@@ -181,6 +181,10 @@ class Settings private constructor(
         val backgroundColor: Int,
         /** 바닐라 이름표를 숨길지. */
         val hideVanillaNametag: Boolean,
+        /** 상대가 블록 등에 가려 실제로 안 보이면 이름표도 함께 숨길지. */
+        val hideWhenNotVisible: Boolean,
+        /** 위 판정을 몇 틱마다 다시 계산할지. 인원수 제곱에 비례하는 레이캐스트라 너무 짧게 잡지 않는다. */
+        val visibilityCheckTicks: Long,
     ) {
         /** 두 묶음 모두 비어 있으면 엔티티를 아예 만들지 않는다. */
         val hasAnyLine: Boolean get() = sharedLines.isNotEmpty() || othersLines.isNotEmpty()
@@ -293,6 +297,9 @@ class Settings private constructor(
                     background = config.getBoolean("display.nametag.background", false),
                     backgroundColor = config.getInt("display.nametag.background-color", 0x40000000),
                     hideVanillaNametag = config.getBoolean("display.nametag.hide-vanilla", true),
+                    hideWhenNotVisible = config.getBoolean("display.nametag.hide-when-not-visible", true),
+                    visibilityCheckTicks = config.getLong("display.nametag.visibility-check-ticks", 10L)
+                        .coerceAtLeast(1L),
                 ),
                 tablist = TablistSettings(
                     enabled = config.getBoolean("display.tablist.enabled", false),

@@ -104,14 +104,19 @@ object Gui {
                 equippedSlots.forEach { slot ->
                     lore += messages.component("gui.lore.equipped", "slot" to slot.display)
                 }
-                lore += Component.empty()
-                if (badge.type == BadgeType.TITLE) {
-                    lore += messages.component("gui.lore.click-display")
-                    lore += messages.component("gui.lore.click-stat")
-                } else {
-                    lore += messages.component("gui.lore.click-seal")
+                // 장착/해제 안내는 실제로 그 클릭이 연결된 창(BadgeListMenu)에서만 보여준다.
+                // clickable=false 로 호출하는 창(PlayerBadgeMenu 등)은 다른 동작이 붙어 있어
+                // 이 안내가 그대로 나가면 실제 클릭 결과와 어긋난다.
+                if (clickable) {
+                    lore += Component.empty()
+                    if (badge.type == BadgeType.TITLE) {
+                        lore += messages.component("gui.lore.click-display")
+                        lore += messages.component("gui.lore.click-stat")
+                    } else {
+                        lore += messages.component("gui.lore.click-seal")
+                    }
+                    if (equippedSlots.isNotEmpty()) lore += messages.component("gui.lore.click-unequip")
                 }
-                if (equippedSlots.isNotEmpty()) lore += messages.component("gui.lore.click-unequip")
             }
         }
 
