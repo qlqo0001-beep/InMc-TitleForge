@@ -1,7 +1,6 @@
 package kr.inmc.titleforge.player
 
 import kr.inmc.titleforge.badge.BadgeType
-import kr.inmc.titleforge.stat.StatType
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,6 +34,8 @@ enum class EquipSlot(val id: String, val display: String) {
  *
  * 조회는 전부 메모리에서 이뤄지므로 플레이스홀더가 초당 수십 회 호출돼도 안전하다.
  * 스텟 총합은 [ProfileManager.recalculate] 가 변경 시점에만 갱신한다 (맞춤 지침 7.2-7).
+ *
+ * 스텟 맵의 키는 스텟 id 문자열이다.
  */
 class PlayerProfile(val uuid: UUID, name: String) {
 
@@ -47,6 +48,14 @@ class PlayerProfile(val uuid: UUID, name: String) {
 
     /** "type:id" → 획득 시각 */
     val obtainedTimes: MutableMap<String, Long> = ConcurrentHashMap()
+
+    /** "type:id" → 만료 시각(epoch ms). **0 이면 영구.** */
+    val expiryTimes: MutableMap<String, Long> = ConcurrentHashMap()
+
+    /** 가장 가까운 만료 시각. 없으면 [Long.MAX_VALUE]. 만료 검사를 싸게 만들기 위한 캐시. */
+    @Volatile
+    var nextExpiry: Long = Long.MAX_VALUE
+        private set
 
     @Volatile
     var statTitle: String? = null
@@ -64,15 +73,15 @@ class PlayerProfile(val uuid: UUID, name: String) {
     var nicknameChangedAt: Long = 0L
 
     @Volatile
-    var equipStats: Map<StatType, Double> = emptyMap()
+    var equipStats: Map<String, Double> = emptyMap()
         internal set
 
     @Volatile
-    var ownStats: Map<StatType, Double> = emptyMap()
+    var ownStats: Map<String, Double> = emptyMap()
         internal set
 
     @Volatile
-    var totalStats: Map<StatType, Double> = emptyMap()
+    var totalStats: Map<String, Double> = emptyMap()
         internal set
 
     private val dirty = AtomicBoolean(false)
@@ -98,32 +107,81 @@ class PlayerProfile(val uuid: UUID, name: String) {
         markDirty()
     }
 
-    fun grant(type: BadgeType, id: String, timestamp: Long = System.currentTimeMillis()): Boolean {
+    /**
+     * @param expiresAt 만료 시각(epoch ms). 0 이면 영구.
+     */
+    fun grant(
+        type: BadgeType,
+        id: String,
+        timestamp: Long = System.currentTimeMillis(),
+        expiresAt: Long = PERMANENT,
+    ): Boolean {
+        val key = key(type, id)
         val added = ownedSets.getValue(type).add(id)
-        if (added) {
-            obtainedTimes["${type.id}:$id"] = timestamp
-            markDirty()
-        }
+        obtainedTimes.putIfAbsent(key, timestamp)
+        setExpiry(type, id, expiresAt)
+        if (added) markDirty()
         return added
     }
 
     fun revoke(type: BadgeType, id: String): Boolean {
         val removed = ownedSets.getValue(type).remove(id)
         if (removed) {
-            obtainedTimes.remove("${type.id}:$id")
-            if (equipped(EquipSlot.SEAL) == id && type == BadgeType.SEAL) setEquipped(EquipSlot.SEAL, null)
+            val key = key(type, id)
+            obtainedTimes.remove(key)
+            expiryTimes.remove(key)
+            if (type == BadgeType.SEAL && seal == id) setEquipped(EquipSlot.SEAL, null)
             if (type == BadgeType.TITLE) {
                 if (statTitle == id) setEquipped(EquipSlot.STAT, null)
                 if (displayTitle == id) setEquipped(EquipSlot.DISPLAY, null)
             }
+            recomputeNextExpiry()
             markDirty()
         }
         return removed
     }
 
-    fun obtainedAt(type: BadgeType, id: String): Long = obtainedTimes["${type.id}:$id"] ?: 0L
+    fun obtainedAt(type: BadgeType, id: String): Long = obtainedTimes[key(type, id)] ?: 0L
 
-    fun stat(stat: StatType): Double = totalStats[stat] ?: 0.0
+    /** 만료 시각. 0 이면 영구. */
+    fun expiryOf(type: BadgeType, id: String): Long = expiryTimes[key(type, id)] ?: PERMANENT
+
+    fun setExpiry(type: BadgeType, id: String, expiresAt: Long) {
+        val key = key(type, id)
+        if (expiresAt <= PERMANENT) expiryTimes.remove(key) else expiryTimes[key] = expiresAt
+        recomputeNextExpiry()
+        markDirty()
+    }
+
+    /** 남은 시간(초). 영구면 null, 이미 지났으면 0. */
+    fun remainingSeconds(type: BadgeType, id: String, now: Long = System.currentTimeMillis()): Long? {
+        val expiry = expiryOf(type, id)
+        if (expiry <= PERMANENT) return null
+        return ((expiry - now) / 1000L).coerceAtLeast(0L)
+    }
+
+    /** 지금 시점에 만료된 항목들. (type, id) 목록. */
+    fun expired(now: Long = System.currentTimeMillis()): List<Pair<BadgeType, String>> {
+        if (now < nextExpiry) return emptyList()
+        val result = ArrayList<Pair<BadgeType, String>>()
+        for ((key, expiry) in expiryTimes) {
+            if (expiry <= PERMANENT || expiry > now) continue
+            val separator = key.indexOf(':')
+            if (separator <= 0) continue
+            val type = BadgeType.of(key.substring(0, separator)) ?: continue
+            result += type to key.substring(separator + 1)
+        }
+        return result
+    }
+
+    private fun recomputeNextExpiry() {
+        nextExpiry = expiryTimes.values.filter { it > PERMANENT }.minOrNull() ?: Long.MAX_VALUE
+    }
+
+    /** 저장소에서 불러온 뒤 한 번 호출해 만료 캐시를 맞춘다. */
+    fun refreshExpiryCache() = recomputeNextExpiry()
+
+    fun stat(id: String): Double = totalStats[id] ?: 0.0
 
     fun markDirty() {
         dirty.set(true)
@@ -132,4 +190,11 @@ class PlayerProfile(val uuid: UUID, name: String) {
     fun consumeDirty(): Boolean = dirty.compareAndSet(true, false)
 
     val isDirty: Boolean get() = dirty.get()
+
+    private fun key(type: BadgeType, id: String): String = "${type.id}:$id"
+
+    companion object {
+        /** 만료 없음. */
+        const val PERMANENT = 0L
+    }
 }

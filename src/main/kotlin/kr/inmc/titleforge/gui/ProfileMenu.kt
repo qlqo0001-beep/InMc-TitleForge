@@ -3,7 +3,6 @@ package kr.inmc.titleforge.gui
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.player.EquipSlot
-import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.util.Items
 import kr.inmc.titleforge.util.Text
 import net.kyori.adventure.text.Component
@@ -79,12 +78,12 @@ class ProfileMenu(
         if (total.isEmpty()) {
             statLore += plugin.messages.component("gui.lore.no-stats")
         } else {
-            statLore += Gui.statLines(total)
+            statLore += Gui.statLines(plugin, total)
             statLore += Component.empty()
             statLore += plugin.messages.component("gui.lore.stat-breakdown")
-            for (stat in StatType.entries) {
-                val equip = profile?.equipStats?.get(stat) ?: 0.0
-                val own = profile?.ownStats?.get(stat) ?: 0.0
+            for (stat in plugin.stats.all()) {
+                val equip = profile?.equipStats?.get(stat.id) ?: 0.0
+                val own = profile?.ownStats?.get(stat.id) ?: 0.0
                 if (equip == 0.0 && own == 0.0) continue
                 statLore += Text.mini(
                     "<dark_gray>  ▪ <gray><stat><dark_gray>: <white>장착 <aqua><equip> <dark_gray>/ <white>보유 <green><own>",
@@ -134,7 +133,10 @@ class ProfileMenu(
             lore += Text.mini(
                 if (reached) "<green>  ✔ <gray><count>개 <dark_gray>- <white><stats>" else "<dark_gray>  ✖ <gray><count>개 <dark_gray>- <gray><stats>",
                 "count" to threshold,
-                "stats" to stats.entries.joinToString(", ") { "${it.key.display} ${it.key.format(it.value)}" },
+                "stats" to stats.entries.joinToString(", ") { (id, value) ->
+                    val stat = plugin.stats.of(id)
+                    if (stat == null) "$id $value" else "${stat.display} ${stat.format(value)}"
+                },
             )
         }
         return lore

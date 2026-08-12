@@ -22,7 +22,7 @@ player:
 badge:
   not-found: '<red><type> <gray><id></gray> <red>을(를) 찾을 수 없습니다.'
   already-exists: '<red>이미 존재하는 ID 입니다: <gray><id>'
-  invalid-id: '<red>ID 는 소문자 영문/숫자/밑줄 1~32자만 가능합니다.'
+  invalid-id: '<red>ID 는 소문자 영문/숫자/밑줄/한글 1~32자만 가능합니다.'
   created: '<green><type> <white><name></white> <green>을(를) 생성했습니다. <gray>(ID: <id>)'
   deleted: '<green><type> <gray><id></gray> <green>을(를) 삭제했습니다.'
   edited: '<green><type> <gray><id></gray> <green>의 <white><field></white> 값을 수정했습니다.'
@@ -36,7 +36,7 @@ badge:
   unequipped-display: '<yellow>표시 칭호를 해제했습니다.'
   unequipped-seal: '<yellow>인장을 해제했습니다.'
   already-equipped: '<yellow>이미 장착 중입니다.'
-  granted: '<green><white><target></white> <green>에게 <white><name></white> <green>을(를) 지급했습니다.'
+  granted: '<green><white><target></white> <green>에게 <white><name></white> <green>을(를) 지급했습니다. <gray>(기한: <duration>)'
   granted-target: '<gradient:#ffd700:#ffec99><bold>NEW</bold></gradient> <white><name></white> <green>을(를) 획득했습니다!'
   already-owned: '<yellow><target></yellow> <yellow>은(는) 이미 보유 중입니다.'
   taken: '<green><white><target></white> <green>에게서 <white><name></white> <green>을(를) 회수했습니다.'
@@ -44,6 +44,9 @@ badge:
   target-not-owned: '<yellow><target></yellow> <yellow>은(는) 해당 항목을 보유하고 있지 않습니다.'
   giveall-done: '<green>온라인 <online>명 / 전체 <total>명 에게 <white><name></white> <green>을(를) 지급했습니다.'
   need-held-item: '<red>손에 아이템을 든 상태로 클릭하세요.'
+  invalid-duration: '<red>기간 표기를 이해할 수 없습니다: <gray><value></gray> <dark_gray>(예: 30d, 12h, 2w, perm)'
+  extended: '<green><white><target></white> <green>의 <white><name></white> <green>보유 기한을 <white><duration></white> <green>(으)로 변경했습니다.'
+  expired: '<red><type> <white><name></white> <red>의 보유 기한이 만료되어 회수되었습니다.'
 
 # 스텟 편집
 stat:
@@ -56,6 +59,15 @@ stat:
   too-large: '<red>값이 너무 큽니다. <gray>(최대 <limit>)'
   out-of-range: '<gold>경고: <white><stat></white> <gold>값이 권장 범위(<range>)를 벗어났습니다. 그대로 적용했습니다.'
 
+# 순위
+rank:
+  disabled: '<red>순위 기능이 비활성화되어 있습니다.'
+  refreshed: '<green>순위 집계 캐시를 비웠습니다. 다음 조회 때 다시 계산합니다.'
+
+# 플레이스홀더 반환값
+placeholder:
+  permanent: '영구'
+
 # 값 입력 공통
 input:
   cancelled: '<yellow>입력을 취소했습니다.'
@@ -64,7 +76,7 @@ input:
   anvil-confirm: '<green>확인'
   prompt-name: '<yellow>표시 이름을 입력하세요. <gray>(MiniMessage 서식 사용 가능)'
   prompt-permission: '<yellow>필요 권한 노드를 입력하세요.'
-  prompt-badge-id: '<yellow>새 ID 를 입력하세요. <gray>(소문자 영문/숫자/밑줄)'
+  prompt-badge-id: '<yellow>새 ID 를 입력하세요. <gray>(소문자 영문/숫자/밑줄/한글)'
 
 nickname:
   disabled: '<red>닉네임 기능이 비활성화되어 있습니다.'
@@ -95,6 +107,7 @@ gui:
   edit-title: '<dark_gray>편집: <id>'
   stat-title: '<dark_gray>스텟 편집: <id>'
   confirm-title: '<dark_gray>정말 진행할까요?'
+  rank-title: '<dark_gray><type> 수집 순위'
 
   lore:
     equip-stats: '<aqua>장착 시 적용'
@@ -104,6 +117,8 @@ gui:
     permission: '<dark_gray>권한: <gray><permission>'
     hidden: '<dark_gray>숨김 처리됨'
     obtained: '<dark_gray>획득일: <gray><date>'
+    expiry-permanent: '<dark_gray>보유 기한: <gray>영구'
+    expiry-remaining: '<gold>보유 기한: <white><time> <gold>남음'
     equipped: '<gold>★ 장착 중 <gray>(<slot>)'
     click-display: '<yellow>좌클릭 <gray>- 표시 칭호로 장착'
     click-stat: '<yellow>우클릭 <gray>- 능력치 칭호로 장착'
@@ -124,8 +139,10 @@ gui:
     # ── 스텟 편집 창 ──
     stat-name-set: '<white><stat> <gray>(<id>)'
     stat-name-unset: '<gray><stat> <dark_gray>(<id>)'
-    stat-attribute: '<dark_gray>바닐라 Attribute · <key>'
-    stat-custom: '<dark_gray>커스텀 · API/플레이스홀더 전용'
+    stat-vanilla: '<green>바닐라<dark_gray> · <key> <dark_gray>(외부 플러그인 없이 적용)'
+    stat-mmo: '<light_purple>MMOItems<dark_gray> · <stat> <green>(연동됨)'
+    stat-mmo-missing: '<light_purple>MMOItems<dark_gray> · <stat> <red>(미연동 — 값만 보관)'
+    stat-virtual: '<gray>가상 스텟<dark_gray> · API/플레이스홀더 전용'
     stat-equip-value: '<aqua>장착 스텟   <white><value>'
     stat-own-value: '<green>보유 스텟   <white><value>'
     stat-operation: '<gray>적용 방식: <white><value>'
@@ -139,6 +156,12 @@ gui:
     stat-remove-target: '<red><side></red> <red>의 <white><stat></white> <red>을(를) 제거합니다.'
     stat-reset-target: '<red><name></red> <red>의 모든 스텟을 초기화합니다.'
     category-summary: '<gray>설정됨 <white><configured><gray> / <white><total>'
+
+    # ── 순위 ──
+    rank-count: '<gray>보유 <type>: <white><count>개'
+    rank-position: '<dark_gray><rank>위'
+    rank-mine: '<gray>내 순위: <white><rank></white><gray>위 / <white><total></white>명  <dark_gray>(<count>개)'
+    rank-none: '<gray>아직 순위가 없습니다.'
 
   button:
     titles:
@@ -288,6 +311,26 @@ gui:
       name: '<red>삭제'
       lore:
         - '<gray>보유 기록까지 함께 삭제됩니다.'
+    rank:
+      name: '<gold><bold>수집 순위'
+      lore:
+        - '<gray>칭호·인장을 많이 모은 순서'
+        - '<yellow>클릭하여 열기'
+    rank-toggle:
+      name: '<yellow>분류 전환'
+      lore:
+        - '<gray>현재: <white><type>'
+    rank-refresh:
+      name: '<yellow>새로고침'
+      lore:
+        - '<gray>집계를 다시 계산합니다.'
+    rank-loading:
+      name: '<gray>집계 중...'
+      lore:
+        - '<dark_gray>잠시만 기다려주세요.'
+    rank-mine:
+      name: '<green>내 <type> 순위'
+      lore: []
     confirm:
       name: '<green><bold>확인'
       lore: []
@@ -307,6 +350,7 @@ help:
     - '<aqua>/it seal <인장ID> <dark_gray>- <gray>인장 장착'
     - '<aqua>/it unequip <stat|show|seal> <dark_gray>- <gray>장착 해제'
     - '<aqua>/it nick <dark_gray>- <gray>닉네임 변경'
+    - '<aqua>/it rank [title|seal] <dark_gray>- <gray>수집 개수 순위'
   admin:
     - '<dark_gray>─ <light_purple>관리자'
     - '<light_purple>/it create <title|seal> <ID> <이름...>'
@@ -314,7 +358,9 @@ help:
     - '<light_purple>/it edit <title|seal> <ID> <필드> <값...>'
     - '<light_purple>/it give <플레이어> <title|seal> <ID>'
     - '<light_purple>/it take <플레이어> <title|seal> <ID>'
-    - '<light_purple>/it giveall <title|seal> <ID>'
+    - '<light_purple>/it give <플레이어> <title|seal> <ID> [기간] <dark_gray>- <gray>기간 예: 30d, 12h, perm'
+    - '<light_purple>/it extend <플레이어> <title|seal> <ID> <기간>'
+    - '<light_purple>/it giveall <title|seal> <ID> [기간]'
     - '<light_purple>/it setnick <플레이어> <닉네임> <dark_gray>| <light_purple>/it resetnick <플레이어>'
     - '<light_purple>/it admin <dark_gray>- <gray>관리 GUI'
     - '<light_purple>/it reload'

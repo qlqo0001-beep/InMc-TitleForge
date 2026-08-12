@@ -42,6 +42,8 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
 
     private fun applyState(player: org.bukkit.entity.Player) {
         val profile = plugin.profiles.cached(player.uniqueId) ?: return
+        // 오프라인 동안 만료된 항목을 먼저 정리한다.
+        plugin.profiles.sweepExpired(profile)
         plugin.statApplier.apply(player, profile.totalStats)
         plugin.nameDisplay.refresh(player)
     }
@@ -49,6 +51,8 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     fun onQuit(event: PlayerQuitEvent) {
         plugin.nameDisplay.cleanup(event.player)
+        plugin.tablist.handleQuit(event.player)
+        plugin.rank.forget(event.player.uniqueId)
         plugin.profiles.handleQuit(event.player)
     }
 }

@@ -139,12 +139,12 @@ class BadgeEditMenu(
         if (badge.type == BadgeType.TITLE) {
             val summary = ArrayList<Component>()
             summary += plugin.messages.component("gui.lore.equip-stats")
-            summary += Gui.statLines(badge.equipStats).ifEmpty {
+            summary += Gui.statLines(plugin, badge.equipStats).ifEmpty {
                 listOf(plugin.messages.component("gui.lore.no-stats"))
             }
             summary += Component.empty()
             summary += plugin.messages.component("gui.lore.own-stats")
-            summary += Gui.statLines(badge.ownStats).ifEmpty {
+            summary += Gui.statLines(plugin, badge.ownStats).ifEmpty {
                 listOf(plugin.messages.component("gui.lore.no-stats"))
             }
             button(

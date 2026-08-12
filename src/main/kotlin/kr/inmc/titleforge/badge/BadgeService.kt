@@ -84,15 +84,18 @@ class BadgeService(private val plugin: TitleForgePlugin) {
     }
 
     /**
-     * 지급. 이미 보유 중이면 false.
+     * 지급. 이미 보유 중이면 false (기간만 갱신하려면 [extend] 를 쓴다).
      * 온라인이면 스텟까지 즉시 반영하고, 오프라인 프로필이면 호출자가 저장을 책임진다.
+     *
+     * @param expiresAt 만료 시각(epoch ms). 0 이면 영구.
      */
-    fun grant(profile: PlayerProfile, badge: Badge): Boolean {
+    @JvmOverloads
+    fun grant(profile: PlayerProfile, badge: Badge, expiresAt: Long = PlayerProfile.PERMANENT): Boolean {
         val offlinePlayer = Bukkit.getOfflinePlayer(profile.uuid)
         if (profile.has(badge.type, badge.id)) return false
         if (!BadgeGrantEvent(offlinePlayer, badge).callEvent()) return false
 
-        profile.grant(badge.type, badge.id)
+        profile.grant(badge.type, badge.id, expiresAt = expiresAt)
         val online = Bukkit.getPlayer(profile.uuid)
         if (online != null) {
             plugin.profiles.refreshStats(profile)
@@ -141,6 +144,17 @@ class BadgeService(private val plugin: TitleForgePlugin) {
         }
         plugin.profiles.refreshAllOnline()
         return removed
+    }
+
+    /**
+     * 보유 기간을 바꾼다. 미보유면 false.
+     *
+     * @param expiresAt 0 이면 영구로 전환
+     */
+    fun extend(profile: PlayerProfile, badge: Badge, expiresAt: Long): Boolean {
+        if (!profile.has(badge.type, badge.id)) return false
+        profile.setExpiry(badge.type, badge.id, expiresAt)
+        return true
     }
 
     fun revoke(profile: PlayerProfile, badge: Badge): Boolean {

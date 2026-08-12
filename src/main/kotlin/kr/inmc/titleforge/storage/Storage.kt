@@ -35,5 +35,22 @@ interface Storage {
     fun isNicknameTaken(nickname: String, except: UUID?): Boolean
 
     /** 저장된 모든 플레이어에게 지급. 지급된 행 수를 반환. */
-    fun grantToAll(type: BadgeType, id: String): Int
+    fun grantToAll(type: BadgeType, id: String, expiresAt: Long): Int
+
+    /** 만료되지 않은 보유 개수 기준 상위 목록. */
+    fun topCollectors(type: BadgeType, limit: Int): List<RankEntry>
+
+    /** 특정 플레이어의 순위(1부터). 보유가 없으면 null. */
+    fun rankOf(type: BadgeType, uuid: UUID): RankEntry?
+
+    /** 해당 분류에서 1개 이상 보유한 인원 수. */
+    fun collectorCount(type: BadgeType): Int
 }
+
+/** 순위 1줄. */
+data class RankEntry(
+    val uuid: UUID,
+    val name: String,
+    val count: Int,
+    val rank: Int,
+)

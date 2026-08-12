@@ -3,8 +3,8 @@ package kr.inmc.titleforge.gui
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
+import kr.inmc.titleforge.stat.Stat
 import kr.inmc.titleforge.stat.StatLayout
-import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.stat.StatValueParser
 import kr.inmc.titleforge.stat.Stats
 import kr.inmc.titleforge.util.Items
@@ -28,7 +28,7 @@ class StatEditMenu(
     private val badgeId: String,
 ) : Menu(plugin, viewer, rows = StatLayout.ROWS) {
 
-    private val layout = StatLayout.compute()
+    private val layout = StatLayout.compute { plugin.stats.byCategory(it) }
 
     /** 항상 레지스트리에서 최신 정의를 읽는다. 동시에 편집해도 옛 값으로 덮어쓰지 않는다. */
     private fun badge(): Badge? = plugin.badges.get(BadgeType.TITLE, badgeId)
@@ -68,12 +68,12 @@ class StatEditMenu(
 
         val summary = ArrayList<Component>()
         summary += plugin.messages.component("gui.lore.equip-stats")
-        summary += Gui.statLines(badge.equipStats).ifEmpty {
+        summary += Gui.statLines(plugin, badge.equipStats).ifEmpty {
             listOf(plugin.messages.component("gui.lore.no-stats"))
         }
         summary += Component.empty()
         summary += plugin.messages.component("gui.lore.own-stats")
-        summary += Gui.statLines(badge.ownStats).ifEmpty {
+        summary += Gui.statLines(plugin, badge.ownStats).ifEmpty {
             listOf(plugin.messages.component("gui.lore.no-stats"))
         }
         button(
@@ -104,8 +104,8 @@ class StatEditMenu(
         }
 
         for ((stat, slot) in layout.statSlots) {
-            val equip = badge.equipStats[stat] ?: 0.0
-            val own = badge.ownStats[stat] ?: 0.0
+            val equip = badge.equipStats[stat.id] ?: 0.0
+            val own = badge.ownStats[stat.id] ?: 0.0
             button(slot, Gui.statIcon(plugin, stat, equip, own)) { event ->
                 onStatClick(stat, event.click)
             }
@@ -122,7 +122,7 @@ class StatEditMenu(
 
     // ── 클릭 처리 ──────────────────────────────────────────────────────
 
-    private fun onStatClick(stat: StatType, click: ClickType) {
+    private fun onStatClick(stat: Stat, click: ClickType) {
         when {
             click == ClickType.SHIFT_LEFT -> promptValue(stat, equipSide = false)
             click.isLeftClick -> promptValue(stat, equipSide = true)
@@ -133,10 +133,10 @@ class StatEditMenu(
 
     private fun sideName(equipSide: Boolean): String = if (equipSide) "장착 스텟" else "보유 스텟"
 
-    private fun currentValue(badge: Badge, stat: StatType, equipSide: Boolean): Double =
-        (if (equipSide) badge.equipStats else badge.ownStats)[stat] ?: 0.0
+    private fun currentValue(badge: Badge, stat: Stat, equipSide: Boolean): Double =
+        (if (equipSide) badge.equipStats else badge.ownStats)[stat.id] ?: 0.0
 
-    private fun promptValue(stat: StatType, equipSide: Boolean) {
+    private fun promptValue(stat: Stat, equipSide: Boolean) {
         val badge = badge() ?: return
         val current = currentValue(badge, stat, equipSide)
 
@@ -162,7 +162,7 @@ class StatEditMenu(
         }
     }
 
-    private fun applyInput(stat: StatType, equipSide: Boolean, input: String) {
+    private fun applyInput(stat: Stat, equipSide: Boolean, input: String) {
         val badge = badge() ?: return
         when (val result = StatValueParser.parse(stat, input)) {
             is StatValueParser.Result.Cancel -> plugin.messages.send(viewer, "input.cancelled")
@@ -199,7 +199,7 @@ class StatEditMenu(
         }
     }
 
-    private fun confirmRemove(stat: StatType, equipSide: Boolean) {
+    private fun confirmRemove(stat: Stat, equipSide: Boolean) {
         val badge = badge() ?: return
         if (currentValue(badge, stat, equipSide) == 0.0) {
             plugin.messages.send(viewer, "stat.nothing-to-remove", "side" to sideName(equipSide))
@@ -225,7 +225,7 @@ class StatEditMenu(
         ).openLater()
     }
 
-    private fun write(badge: Badge, stat: StatType, equipSide: Boolean, internal: Double) {
+    private fun write(badge: Badge, stat: Stat, equipSide: Boolean, internal: Double) {
         val updated = if (equipSide) {
             badge.copy(equipStats = Stats.with(badge.equipStats, stat, internal))
         } else {

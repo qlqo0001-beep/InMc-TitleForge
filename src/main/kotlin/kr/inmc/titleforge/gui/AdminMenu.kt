@@ -94,7 +94,7 @@ class AdminMenu(
                     AdminMenu(plugin, viewer, creating).openLater()
                     return@prompt
                 }
-                val id = input.lowercase().replace(' ', '_')
+                val id = Badge.normalizeId(input)
                 when {
                     !Badge.validId(id) -> plugin.messages.send(viewer, "badge.invalid-id")
                     plugin.badges.exists(creating, id) ->

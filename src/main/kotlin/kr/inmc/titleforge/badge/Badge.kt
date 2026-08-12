@@ -1,6 +1,5 @@
 package kr.inmc.titleforge.badge
 
-import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.util.Text
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
@@ -51,8 +50,9 @@ data class Badge(
     val permission: String = "",
     val hidden: Boolean = false,
     val order: Int = 0,
-    val equipStats: Map<StatType, Double> = emptyMap(),
-    val ownStats: Map<StatType, Double> = emptyMap(),
+    /** 스텟 id → 수치. 레지스트리 인스턴스가 아니라 id 로 들고 있어 리로드에 안전하다. */
+    val equipStats: Map<String, Double> = emptyMap(),
+    val ownStats: Map<String, Double> = emptyMap(),
 ) {
     /** 생성 시점에 한 번만 파싱한다. 플레이스홀더가 고빈도로 호출해도 비용이 없다. */
     val nameComponent: Component = Text.mini(displayName)
@@ -68,9 +68,16 @@ data class Badge(
         }
 
     companion object {
-        private val ID_PATTERN = Regex("^[a-z0-9_]{1,32}$")
+        /**
+         * 소문자 영문 · 숫자 · 밑줄 · **완성형 한글**을 허용한다.
+         * 공백과 특수문자는 명령어 인자·플레이스홀더가 깨질 수 있어 계속 금지한다.
+         */
+        private val ID_PATTERN = Regex("^[a-z0-9_가-힣]{1,32}$")
 
         /** 유저/관리자 입력 ID 검증 (맞춤 지침 7.5-21). */
         fun validId(id: String): Boolean = ID_PATTERN.matches(id)
+
+        /** 입력값을 ID 규칙에 맞게 다듬는다. 공백은 밑줄로, 영문은 소문자로. */
+        fun normalizeId(raw: String): String = raw.trim().replace(' ', '_').lowercase()
     }
 }

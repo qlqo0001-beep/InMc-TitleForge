@@ -40,6 +40,12 @@ class MainMenu(plugin: TitleForgePlugin, viewer: Player) : Menu(plugin, viewer, 
             ProfileMenu(plugin, viewer, viewer).openLater()
         }
 
+        if (plugin.settings.rank.enabled) {
+            button(15, Gui.item(plugin, "gui.button.rank", Material.GOLDEN_HELMET)) {
+                RankMenu(plugin, viewer, BadgeType.TITLE).openLater()
+            }
+        }
+
         if (viewer.hasPermission("titleforge.admin")) {
             button(16, Gui.item(plugin, "gui.button.admin", gui.iconAdmin)) {
                 AdminMenu(plugin, viewer, BadgeType.TITLE).openLater()

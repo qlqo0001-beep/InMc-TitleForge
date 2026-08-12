@@ -3,7 +3,6 @@ package kr.inmc.titleforge.hook
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.player.PlayerProfile
-import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.util.Text
 import me.clip.placeholderapi.expansion.PlaceholderExpansion
 import org.bukkit.OfflinePlayer
@@ -53,6 +52,15 @@ class PlaceholderHook(private val plugin: TitleForgePlugin) : PlaceholderExpansi
             params.startsWith("stat_own_", true) -> statValue(profile?.ownStats, params.removePrefix("stat_own_"))
             params.startsWith("stat_", true) -> statValue(profile?.totalStats, params.removePrefix("stat_"))
 
+            params.startsWith("expiry_seconds_", true) ->
+                expirySeconds(profile, params.removePrefix("expiry_seconds_"))
+
+            params.startsWith("expiry_", true) -> expiryText(profile, params.removePrefix("expiry_"))
+
+            params.equals("rank_title", true) -> rankOf(uuid, BadgeType.TITLE)
+            params.equals("rank_seal", true) -> rankOf(uuid, BadgeType.SEAL)
+            params.startsWith("rank_top_", true) -> topEntry(params.removePrefix("rank_top_"))
+
             params.startsWith("has_title_", true) ->
                 yesNo(profile?.has(BadgeType.TITLE, params.removePrefix("has_title_")) == true)
 
@@ -75,10 +83,54 @@ class PlaceholderHook(private val plugin: TitleForgePlugin) : PlaceholderExpansi
         return Text.number(owned * 100.0 / total, 1)
     }
 
-    private fun statValue(stats: Map<StatType, Double>?, rawId: String): String {
-        val stat = StatType.of(rawId) ?: return ""
-        val value = stats?.get(stat) ?: 0.0
+    private fun statValue(stats: Map<String, Double>?, rawId: String): String {
+        val stat = plugin.stats.of(rawId) ?: return ""
+        val value = stats?.get(stat.id) ?: 0.0
         return Text.number(value * stat.displayScale, stat.decimals)
+    }
+
+    /** `expiry_title_<id>` → "6일 3시간" / 영구면 설정된 문구. */
+    private fun expiryText(profile: PlayerProfile?, raw: String): String {
+        val (type, id) = splitTypeAndId(raw) ?: return ""
+        if (profile?.has(type, id) != true) return ""
+        val remaining = profile.remainingSeconds(type, id) ?: return plugin.messages.raw("placeholder.permanent")
+        return Text.duration(remaining)
+    }
+
+    /** `expiry_seconds_title_<id>` → 남은 초. 영구면 -1, 미보유면 빈 문자열. */
+    private fun expirySeconds(profile: PlayerProfile?, raw: String): String {
+        val (type, id) = splitTypeAndId(raw) ?: return ""
+        if (profile?.has(type, id) != true) return ""
+        return (profile.remainingSeconds(type, id) ?: -1L).toString()
+    }
+
+    private fun splitTypeAndId(raw: String): Pair<BadgeType, String>? {
+        val separator = raw.indexOf('_')
+        if (separator <= 0) return null
+        val type = BadgeType.of(raw.substring(0, separator)) ?: return null
+        val id = raw.substring(separator + 1)
+        return if (id.isEmpty()) null else type to id
+    }
+
+    private fun rankOf(uuid: java.util.UUID, type: BadgeType): String {
+        val entry = plugin.rank.cachedPersonal(uuid, type)
+        if (entry == null) {
+            // 캐시가 없으면 비동기로 채워두고 이번 호출은 빈 값으로 돌려준다.
+            plugin.rank.requestPersonal(uuid, type)
+            return ""
+        }
+        return entry.rank.toString()
+    }
+
+    /** `rank_top_title_1` → 이름, `rank_top_title_1_count` → 보유 수. */
+    private fun topEntry(raw: String): String {
+        val parts = raw.split('_')
+        if (parts.size < 2) return ""
+        val type = BadgeType.of(parts[0]) ?: return ""
+        val position = parts[1].toIntOrNull() ?: return ""
+        val snapshot = plugin.rank.cached(type) ?: return ""
+        val entry = snapshot.entries.getOrNull(position - 1) ?: return ""
+        return if (parts.size >= 3 && parts[2].equals("count", true)) entry.count.toString() else entry.name
     }
 
     private fun yesNo(value: Boolean): String = if (value) "yes" else "no"

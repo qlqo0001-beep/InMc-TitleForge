@@ -10,8 +10,9 @@ import kr.inmc.titleforge.gui.MainMenu
 import kr.inmc.titleforge.gui.ProfileMenu
 import kr.inmc.titleforge.player.EquipSlot
 import kr.inmc.titleforge.player.PlayerProfile
-import kr.inmc.titleforge.stat.StatType
+import kr.inmc.titleforge.gui.RankMenu
 import kr.inmc.titleforge.stat.Stats
+import kr.inmc.titleforge.util.DurationParser
 import kr.inmc.titleforge.util.Sched
 import kr.inmc.titleforge.util.Text
 import org.bukkit.Bukkit
@@ -69,6 +70,8 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
 
             "nick", "닉네임" -> player(sender)?.let { plugin.nicknames.requestChange(it) }
 
+            "rank", "순위" -> handleRank(sender, args)
+
             // ── 관리자 ──
             "create", "생성" -> ifAdmin(sender) { handleCreate(sender, args) }
             "delete", "삭제" -> ifAdmin(sender) { handleDelete(sender, args) }
@@ -76,6 +79,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             "give", "지급" -> ifAdmin(sender) { handleGive(sender, args, grant = true) }
             "take", "회수" -> ifAdmin(sender) { handleGive(sender, args, grant = false) }
             "giveall" -> ifAdmin(sender) { handleGiveAll(sender, args) }
+            "extend", "연장" -> ifAdmin(sender) { handleExtend(sender, args) }
             "setnick" -> ifAdmin(sender) { handleSetNick(sender, args) }
             "resetnick" -> ifAdmin(sender) { handleResetNick(sender, args) }
             "admin", "관리" -> ifAdmin(sender) {
@@ -182,7 +186,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
 
     private fun handleCreate(sender: CommandSender, args: Array<out String>) {
         val type = typeOf(sender, args.getOrNull(1)) ?: return
-        val id = args.getOrNull(2)?.lowercase()
+        val id = args.getOrNull(2)?.let { Badge.normalizeId(it) }
         if (id == null || !Badge.validId(id)) {
             messages.send(sender, "badge.invalid-id")
             return
@@ -263,13 +267,15 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
                     return
                 }
                 val side = rest.getOrNull(0)?.lowercase()
-                val stat = rest.getOrNull(1)?.let { StatType.of(it) }
-                val value = rest.getOrNull(2)?.toDoubleOrNull()
+                val stat = rest.getOrNull(1)?.let { plugin.stats.of(it) }
+                val rawValue = rest.getOrNull(2)?.toDoubleOrNull()
+                // 명령어도 GUI 와 같은 표시 단위를 쓴다.
+                val value = rawValue?.let { stat?.toInternal(it) }
                 if (stat == null) {
                     messages.send(sender, "general.invalid-stat", "value" to (rest.getOrNull(1) ?: "-"))
                     return
                 }
-                if (value == null) {
+                if (rawValue == null || value == null) {
                     messages.send(sender, "general.invalid-number", "value" to (rest.getOrNull(2) ?: "-"))
                     return
                 }
@@ -293,6 +299,17 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
         messages.send(sender, "badge.edited", "type" to type.display, "id" to badge.id, "field" to field)
     }
 
+    /** `perm`(기본) / `30d` / `12h` / `2w` 등을 만료 시각으로 바꾼다. 잘못된 표기면 null. */
+    private fun expiryOf(sender: CommandSender, raw: String?): Long? =
+        when (val parsed = DurationParser.parse(raw)) {
+            is DurationParser.Result.Permanent -> PlayerProfile.PERMANENT
+            is DurationParser.Result.Limited -> System.currentTimeMillis() + parsed.millis
+            is DurationParser.Result.Invalid -> {
+                messages.send(sender, "badge.invalid-duration", "value" to (raw ?: "-"))
+                null
+            }
+        }
+
     private fun handleGive(sender: CommandSender, args: Array<out String>, grant: Boolean) {
         val targetName = args.getOrNull(1)
         val type = typeOf(sender, args.getOrNull(2)) ?: return
@@ -301,13 +318,17 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "player.not-found", "name" to "-")
             return
         }
+        // 4번째 인자는 보유 기간. 없으면 영구.
+        val expiresAt = if (grant) expiryOf(sender, args.getOrNull(4)) ?: return else 0L
 
         withProfile(sender, targetName) { profile ->
             if (grant) {
-                if (plugin.badgeService.grant(profile, badge)) {
+                if (plugin.badgeService.grant(profile, badge, expiresAt)) {
                     messages.send(
                         sender, "badge.granted",
-                        "target" to profile.name, "name" to badge.nameComponent,
+                        "target" to profile.name,
+                        "name" to badge.nameComponent,
+                        "duration" to durationLabel(expiresAt),
                     )
                 } else {
                     messages.send(sender, "badge.already-owned", "target" to profile.name)
@@ -322,12 +343,65 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
         }
     }
 
+    /** 만료 시각을 사람이 읽는 문구로. */
+    private fun durationLabel(expiresAt: Long): String =
+        if (expiresAt <= PlayerProfile.PERMANENT) {
+            messages.raw("placeholder.permanent")
+        } else {
+            Text.duration((expiresAt - System.currentTimeMillis()) / 1000L)
+        }
+
+    /** 보유 기간만 바꾼다. */
+    private fun handleExtend(sender: CommandSender, args: Array<out String>) {
+        val targetName = args.getOrNull(1)
+        val type = typeOf(sender, args.getOrNull(2)) ?: return
+        val badge = badgeOf(sender, type, args.getOrNull(3)) ?: return
+        if (targetName == null) {
+            messages.send(sender, "player.not-found", "name" to "-")
+            return
+        }
+        val expiresAt = expiryOf(sender, args.getOrNull(4)) ?: return
+
+        withProfile(sender, targetName) { profile ->
+            if (plugin.badgeService.extend(profile, badge, expiresAt)) {
+                messages.send(
+                    sender, "badge.extended",
+                    "target" to profile.name,
+                    "name" to badge.nameComponent,
+                    "duration" to durationLabel(expiresAt),
+                )
+            } else {
+                messages.send(sender, "badge.target-not-owned", "target" to profile.name)
+            }
+        }
+    }
+
+    private fun handleRank(sender: CommandSender, args: Array<out String>) {
+        if (!plugin.settings.rank.enabled) {
+            messages.send(sender, "rank.disabled")
+            return
+        }
+        if (args.getOrNull(1)?.equals("refresh", true) == true) {
+            if (!sender.hasPermission(ADMIN)) {
+                messages.send(sender, "general.no-permission")
+                return
+            }
+            plugin.rank.invalidate()
+            messages.send(sender, "rank.refreshed")
+            return
+        }
+        val type = args.getOrNull(1)?.let { BadgeType.of(it) } ?: BadgeType.TITLE
+        val viewer = player(sender) ?: return
+        RankMenu(plugin, viewer, type).open()
+    }
+
     private fun handleGiveAll(sender: CommandSender, args: Array<out String>) {
         val type = typeOf(sender, args.getOrNull(1)) ?: return
         val badge = badgeOf(sender, type, args.getOrNull(2)) ?: return
+        val expiresAt = expiryOf(sender, args.getOrNull(3)) ?: return
 
         Sched.async(plugin) {
-            val rows = runCatching { plugin.storage.grantToAll(type, badge.id) }.getOrElse {
+            val rows = runCatching { plugin.storage.grantToAll(type, badge.id, expiresAt) }.getOrElse {
                 plugin.logger.severe("전체 지급 실패: ${it.message}")
                 messages.send(sender, "general.storage-error")
                 return@async
@@ -336,7 +410,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
                 var online = 0
                 for (player in Bukkit.getOnlinePlayers()) {
                     val profile = plugin.profiles.of(player) ?: continue
-                    if (plugin.badgeService.grant(profile, badge)) {
+                    if (plugin.badgeService.grant(profile, badge, expiresAt)) {
                         online++
                         plugin.profiles.save(profile)
                     }
@@ -420,25 +494,29 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
                 "seal" -> ownedIds(sender, BadgeType.SEAL)
                 "unequip" -> listOf("stat", "show", "seal")
                 "info" -> onlineNames()
+                "rank" -> TYPES + if (admin) listOf("refresh") else emptyList()
                 "create", "delete", "edit", "giveall" -> if (admin) TYPES else emptyList()
-                "give", "take", "setnick", "resetnick" -> if (admin) onlineNames() else emptyList()
+                "give", "take", "extend", "setnick", "resetnick" -> if (admin) onlineNames() else emptyList()
                 else -> emptyList()
             }
 
             3 -> when (args[0].lowercase()) {
                 "delete", "edit" -> if (admin) idsOf(args[1]) else emptyList()
                 "giveall" -> if (admin) idsOf(args[1]) else emptyList()
-                "give", "take" -> if (admin) TYPES else emptyList()
+                "give", "take", "extend" -> if (admin) TYPES else emptyList()
                 else -> emptyList()
             }
 
             4 -> when (args[0].lowercase()) {
                 "edit" -> if (admin) EDIT_FIELDS else emptyList()
-                "give", "take" -> if (admin) idsOf(args[2]) else emptyList()
+                "give", "take", "extend" -> if (admin) idsOf(args[2]) else emptyList()
+                "giveall" -> if (admin) DURATIONS else emptyList()
                 else -> emptyList()
             }
 
-            5 -> if (admin && args[0].equals("edit", true)) {
+            5 -> if (admin && (args[0].equals("give", true) || args[0].equals("extend", true))) {
+                DURATIONS
+            } else if (admin && args[0].equals("edit", true)) {
                 when (args[3].lowercase()) {
                     "stat" -> listOf("equip", "own")
                     "rarity" -> Rarity.entries.map { it.id }
@@ -450,7 +528,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             }
 
             6 -> if (admin && args[0].equals("edit", true) && args[3].equals("stat", true)) {
-                StatType.entries.map { it.id }
+                plugin.stats.ids().toList()
             } else {
                 emptyList()
             }
@@ -478,11 +556,17 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
 
         val TYPES = listOf("title", "seal")
 
-        val USER_SUBCOMMANDS = listOf("menu", "title", "seal", "info", "equip", "show", "unequip", "nick")
+        val USER_SUBCOMMANDS = listOf(
+            "menu", "title", "seal", "info", "equip", "show", "unequip", "nick", "rank",
+        )
 
         val ADMIN_SUBCOMMANDS = listOf(
-            "create", "delete", "edit", "give", "take", "giveall", "setnick", "resetnick", "admin", "reload",
+            "create", "delete", "edit", "give", "take", "giveall", "extend",
+            "setnick", "resetnick", "admin", "reload",
         )
+
+        /** 기간 인자 추천값. */
+        val DURATIONS = listOf("perm", "1d", "7d", "14d", "30d", "12h", "1w")
 
         val EDIT_FIELDS = listOf("name", "lore", "rarity", "icon", "permission", "hidden", "order", "stat")
     }

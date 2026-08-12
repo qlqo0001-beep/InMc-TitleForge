@@ -5,8 +5,9 @@ import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.player.EquipSlot
 import kr.inmc.titleforge.player.PlayerProfile
+import kr.inmc.titleforge.stat.Stat
 import kr.inmc.titleforge.stat.StatCategory
-import kr.inmc.titleforge.stat.StatType
+import kr.inmc.titleforge.stat.StatKind
 import kr.inmc.titleforge.util.Items
 import kr.inmc.titleforge.util.Text
 import net.kyori.adventure.text.Component
@@ -57,12 +58,12 @@ object Gui {
         if (badge.equipStats.isNotEmpty()) {
             lore += Component.empty()
             lore += messages.component("gui.lore.equip-stats")
-            lore += statLines(badge.equipStats)
+            lore += statLines(plugin, badge.equipStats)
         }
         if (badge.ownStats.isNotEmpty()) {
             lore += Component.empty()
             lore += messages.component("gui.lore.own-stats")
-            lore += statLines(badge.ownStats)
+            lore += statLines(plugin, badge.ownStats)
         }
 
         lore += Component.empty()
@@ -88,6 +89,13 @@ object Gui {
                 val date = profile?.obtainedAt(badge.type, badge.id) ?: 0L
                 if (date > 0L) {
                     lore += messages.component("gui.lore.obtained", "date" to DATE_FORMAT.format(Date(date)))
+                }
+                // 보유 기한
+                val remaining = profile?.remainingSeconds(badge.type, badge.id)
+                lore += if (remaining == null) {
+                    messages.component("gui.lore.expiry-permanent")
+                } else {
+                    messages.component("gui.lore.expiry-remaining", "time" to Text.duration(remaining))
                 }
                 equippedSlots.forEach { slot ->
                     lore += messages.component("gui.lore.equipped", "slot" to slot.display)
@@ -117,7 +125,7 @@ object Gui {
      */
     fun statIcon(
         plugin: TitleForgePlugin,
-        stat: StatType,
+        stat: Stat,
         equipValue: Double,
         ownValue: Double,
     ): ItemStack {
@@ -125,10 +133,27 @@ object Gui {
         val lore = ArrayList<Component>()
 
         lore += Text.mini("${stat.category.color}[${stat.category.display}]")
-        if (stat.vanilla) {
-            lore += messages.component("gui.lore.stat-attribute", "key" to "minecraft:${stat.attributeKey}")
-        } else {
-            lore += messages.component("gui.lore.stat-custom")
+
+        // 종류를 항상 명시한다. 바닐라 스텟은 외부 플러그인 없이도 동작한다는 점을 분명히 한다.
+        when (stat.kind) {
+            StatKind.VANILLA ->
+                lore += messages.component("gui.lore.stat-vanilla", "key" to "minecraft:${stat.attributeKey}")
+
+            StatKind.MMO -> {
+                val linked = plugin.statApplier.mythicLib?.available == true
+                lore += messages.component(
+                    if (linked) "gui.lore.stat-mmo" else "gui.lore.stat-mmo-missing",
+                    "stat" to (stat.mmoStat ?: "?"),
+                )
+            }
+
+            StatKind.VIRTUAL -> lore += messages.component("gui.lore.stat-virtual")
+        }
+
+        // 설명 로어
+        if (stat.description.isNotEmpty()) {
+            lore += DIVIDER
+            stat.description.forEach { lore += Text.mini("<gray><line>", "line" to it) }
         }
 
         lore += DIVIDER
@@ -142,7 +167,9 @@ object Gui {
         )
 
         lore += DIVIDER
-        lore += messages.component("gui.lore.stat-operation", "value" to stat.operationDisplay)
+        if (stat.kind == StatKind.VANILLA) {
+            lore += messages.component("gui.lore.stat-operation", "value" to stat.operationDisplay)
+        }
         if (stat.vanillaBase != null) {
             lore += messages.component(
                 "gui.lore.stat-base",
@@ -164,7 +191,7 @@ object Gui {
         return Items.of(stat.icon, statTitle(plugin, stat, configured), lore, glow = configured)
     }
 
-    private fun statTitle(plugin: TitleForgePlugin, stat: StatType, configured: Boolean): Component =
+    private fun statTitle(plugin: TitleForgePlugin, stat: Stat, configured: Boolean): Component =
         plugin.messages.component(
             if (configured) "gui.lore.stat-name-set" else "gui.lore.stat-name-unset",
             "stat" to stat.display,
@@ -175,11 +202,11 @@ object Gui {
     fun categoryLabel(
         plugin: TitleForgePlugin,
         category: StatCategory,
-        equipStats: Map<StatType, Double>,
-        ownStats: Map<StatType, Double>,
+        equipStats: Map<String, Double>,
+        ownStats: Map<String, Double>,
     ): ItemStack {
-        val stats = category.stats()
-        val configured = stats.count { (equipStats[it] ?: 0.0) != 0.0 || (ownStats[it] ?: 0.0) != 0.0 }
+        val stats = plugin.stats.byCategory(category)
+        val configured = stats.count { (equipStats[it.id] ?: 0.0) != 0.0 || (ownStats[it.id] ?: 0.0) != 0.0 }
         val lore = ArrayList<Component>()
         lore += plugin.messages.component(
             "gui.lore.category-summary",
@@ -187,8 +214,8 @@ object Gui {
             "total" to stats.size,
         )
         stats.forEach { stat ->
-            val equip = equipStats[stat] ?: 0.0
-            val own = ownStats[stat] ?: 0.0
+            val equip = equipStats[stat.id] ?: 0.0
+            val own = ownStats[stat.id] ?: 0.0
             if (equip == 0.0 && own == 0.0) return@forEach
             lore += Text.mini(
                 "<dark_gray>  ▪ <gray><stat> <dark_gray>| <aqua><equip> <dark_gray>/ <green><own>",
@@ -204,9 +231,14 @@ object Gui {
         )
     }
 
-    fun statLines(stats: Map<StatType, Double>): List<Component> =
-        StatType.entries.mapNotNull { stat ->
-            val value = stats[stat] ?: return@mapNotNull null
+    /**
+     * 스텟 목록 로어. 레지스트리에 없는 id 는 원문 그대로 보여준다
+     * (설정에서 잠깐 빠졌을 때도 값이 있다는 사실은 드러나야 한다).
+     */
+    fun statLines(plugin: TitleForgePlugin, stats: Map<String, Double>): List<Component> {
+        if (stats.isEmpty()) return emptyList()
+        val known = plugin.stats.all().mapNotNull { stat ->
+            val value = stats[stat.id] ?: return@mapNotNull null
             if (value == 0.0) return@mapNotNull null
             Text.mini(
                 "<dark_gray>  ▪ <gray><stat> <green><value>",
@@ -214,4 +246,15 @@ object Gui {
                 "value" to stat.format(value),
             )
         }
+        val unknown = stats.entries
+            .filter { !plugin.stats.exists(it.key) && it.value != 0.0 }
+            .map { (id, value) ->
+                Text.mini(
+                    "<dark_gray>  ▪ <dark_red><id> <gray><value> <dark_gray>(미등록)",
+                    "id" to id,
+                    "value" to Text.number(value, 2),
+                )
+            }
+        return known + unknown
+    }
 }

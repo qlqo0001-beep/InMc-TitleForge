@@ -4,7 +4,7 @@ import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.player.EquipSlot
-import kr.inmc.titleforge.stat.StatType
+import kr.inmc.titleforge.stat.Stat
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
@@ -36,14 +36,28 @@ object TitleForgeApi {
         return plugin.badges.get(slot.type, id)
     }
 
-    /** 보유 + 장착 + 마일스톤을 합친 값. */
-    fun stat(uuid: UUID, stat: StatType): Double = plugin.profiles.cached(uuid)?.stat(stat) ?: 0.0
+    /** 보유 + 장착 + 마일스톤을 합친 값. 스텟 id 로 조회한다. */
+    fun stat(uuid: UUID, statId: String): Double = plugin.profiles.cached(uuid)?.stat(statId) ?: 0.0
 
-    fun stats(uuid: UUID): Map<StatType, Double> = plugin.profiles.cached(uuid)?.totalStats ?: emptyMap()
+    fun stat(uuid: UUID, stat: Stat): Double = stat(uuid, stat.id)
 
-    fun equipStats(uuid: UUID): Map<StatType, Double> = plugin.profiles.cached(uuid)?.equipStats ?: emptyMap()
+    fun stats(uuid: UUID): Map<String, Double> = plugin.profiles.cached(uuid)?.totalStats ?: emptyMap()
 
-    fun ownStats(uuid: UUID): Map<StatType, Double> = plugin.profiles.cached(uuid)?.ownStats ?: emptyMap()
+    fun equipStats(uuid: UUID): Map<String, Double> = plugin.profiles.cached(uuid)?.equipStats ?: emptyMap()
+
+    fun ownStats(uuid: UUID): Map<String, Double> = plugin.profiles.cached(uuid)?.ownStats ?: emptyMap()
+
+    /** 등록된 스텟 정의 목록. */
+    fun statDefinitions(): List<Stat> = plugin.stats.all()
+
+    fun statDefinition(id: String): Stat? = plugin.stats.of(id)
+
+    /** 보유 만료까지 남은 초. 영구면 null, 미보유면 null. */
+    fun remainingSeconds(uuid: UUID, type: BadgeType, id: String): Long? {
+        val profile = plugin.profiles.cached(uuid) ?: return null
+        if (!profile.has(type, id)) return null
+        return profile.remainingSeconds(type, id)
+    }
 
     /** 설정된 닉네임. 없으면 null. */
     fun nickname(uuid: UUID): String? = plugin.profiles.cached(uuid)?.nickname
@@ -52,11 +66,17 @@ object TitleForgeApi {
     fun nameplate(player: Player): Component =
         plugin.nameDisplay.nameplate(plugin.profiles.of(player), player.name)
 
-    /** 온라인 플레이어에게 지급. 메인 스레드에서 호출할 것. */
-    fun grant(player: Player, type: BadgeType, id: String): Boolean {
+    /**
+     * 온라인 플레이어에게 지급. 메인 스레드에서 호출할 것.
+     *
+     * @param durationMillis 보유 기간(밀리초). 0 이면 영구.
+     */
+    @JvmOverloads
+    fun grant(player: Player, type: BadgeType, id: String, durationMillis: Long = 0L): Boolean {
         val profile = plugin.profiles.of(player) ?: return false
         val badge = plugin.badges.get(type, id) ?: return false
-        val granted = plugin.badgeService.grant(profile, badge)
+        val expiresAt = if (durationMillis > 0L) System.currentTimeMillis() + durationMillis else 0L
+        val granted = plugin.badgeService.grant(profile, badge, expiresAt)
         if (granted) plugin.profiles.save(profile)
         return granted
     }

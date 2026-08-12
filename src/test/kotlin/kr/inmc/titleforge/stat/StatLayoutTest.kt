@@ -1,5 +1,6 @@
 package kr.inmc.titleforge.stat
 
+import java.util.logging.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -11,13 +12,15 @@ import kotlin.test.assertTrue
  */
 class StatLayoutTest {
 
-    private val layout = StatLayout.compute()
+    private val registry = StatRegistry(Logger.getLogger("test"))
+
+    private val layout = StatLayout.compute { registry.byCategory(it) }
 
     @Test
     fun `모든 스텟이 정확히 한 번씩 배치된다`() {
         assertTrue(layout.overflow.isEmpty(), "배치되지 못한 스텟: ${layout.overflow}")
-        assertEquals(StatType.entries.size, layout.statSlots.size)
-        assertEquals(StatType.entries.toSet(), layout.statSlots.keys.toSet())
+        assertEquals(registry.all().size, layout.statSlots.size)
+        assertEquals(registry.all().toSet(), layout.statSlots.keys.toSet())
     }
 
     @Test
@@ -57,7 +60,7 @@ class StatLayoutTest {
     @Test
     fun `같은 분류의 스텟은 라벨 오른쪽에 이어서 놓인다`() {
         for ((category, labelSlot) in layout.categorySlots) {
-            val stats = category.stats().take(StatLayout.MAX_PER_ROW)
+            val stats = registry.byCategory(category).take(StatLayout.MAX_PER_ROW)
             stats.forEachIndexed { index, stat ->
                 assertEquals(labelSlot + 1 + index, layout.statSlots[stat], "${stat.id} 위치")
             }
@@ -73,7 +76,7 @@ class StatLayoutTest {
 
     @Test
     fun `한 분류가 여덟 개를 넘으면 다음 행으로 이어진다`() {
-        val many = StatType.entries.take(StatLayout.MAX_PER_ROW + 2)
+        val many = registry.all().take(StatLayout.MAX_PER_ROW + 2)
         val result = StatLayout.compute(
             categories = listOf(StatCategory.COMBAT),
             statsOf = { many },
@@ -86,7 +89,8 @@ class StatLayoutTest {
     @Test
     fun `자리가 없으면 배치 대신 overflow 로 보고한다`() {
         // 분류 행(4줄) × 8칸 = 32칸을 초과하는 상황
-        val overflowing = List(40) { StatType.entries[it % StatType.entries.size] }
+        val all = registry.all()
+        val overflowing = List(40) { all[it % all.size] }
         val result = StatLayout.compute(
             categories = listOf(StatCategory.COMBAT),
             statsOf = { overflowing },

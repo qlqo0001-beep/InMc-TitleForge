@@ -14,8 +14,8 @@
 | 언어 | Kotlin (JVM) |
 | 빌드 | Gradle (Kotlin DSL) + Shadow (의존성 셰이딩) |
 | 저장소 | SQLite 기본 / MySQL·MariaDB 선택 (HikariCP 풀링) |
-| 연동 | PlaceholderAPI (soft), Vault (soft) |
-| 성능 전제 | 메인 스레드에서 I/O 금지, 상시 반복 태스크 0개, 모든 조회는 메모리 캐시 |
+| 연동 | PlaceholderAPI (soft), Vault (soft), MMOItems/MythicLib (soft, 리플렉션) |
+| 성능 전제 | 메인 스레드에서 I/O 금지, 반복 태스크는 표시 갱신용 1개(선택), 모든 조회는 메모리 캐시 |
 
 ### 확정된 설계 결정 (사용자 확인 완료)
 
@@ -76,8 +76,12 @@ kr.inmc.titleforge
 │           Badge.kt          칭호·인장 정의 (불변 data class)
 │           Rarity.kt         등급(색상·정렬 가중치)
 │           BadgeRegistry.kt  메모리 레지스트리 (읽기 O(1))
-├─ stat/    StatType.kt       스텟 정의 + 바닐라 Attribute 매핑
-│           StatApplier.kt    AttributeModifier 적용/회수
+├─ stat/    Stat.kt           스텟 1개 정의 (id 기준 동일성)
+│           StatRegistry.kt   바닐라 내장 + stats.yml 병합 레지스트리
+│           StatCategory.kt   전투/방어/이동/유틸리티
+│           StatLayout.kt     편집 GUI 슬롯 배치 (순수 로직)
+│           StatValueParser.kt 채팅 입력값 해석 (순수 로직)
+│           StatApplier.kt    AttributeModifier + MMOItems 적용/회수
 ├─ player/  PlayerProfile.kt  플레이어 상태 + 스텟 캐시
 │           ProfileManager.kt 비동기 로드/저장/캐시 수명 관리
 ├─ storage/ Storage.kt        저장소 인터페이스
@@ -88,8 +92,16 @@ kr.inmc.titleforge
 ├─ nickname/ NicknameService.kt   검증·비용·쿨타임
 │            NicknameInput.kt     입력 SPI (Anvil / Chat 구현)
 │            NameDisplayService.kt displayName·탭·채팅·네임태그
-├─ hook/    PlaceholderHook.kt, VaultHook.kt
-└─ util/    Text.kt, Items.kt, Sched.kt
+├─ display/ NametagService.kt  여러 줄 머리 위 이름표 (TextDisplay 1개)
+│           TablistService.kt  탭리스트 머리말/꼬리말
+│           DisplayTicker.kt   유일한 반복 태스크 (이름표·탭리스트·만료)
+├─ rank/    RankService.kt     수집 개수 순위 집계 + TTL 캐시
+├─ input/   TextInput.kt       범용 입력 SPI (Anvil / Chat)
+├─ hook/    PlaceholderHook.kt  %titleforge_...% 제공
+│           PlaceholderService.kt 외부 %플레이스홀더% 치환
+│           MythicLibHook.kt   MMOItems 스텟 적용 (리플렉션)
+│           VaultHook.kt
+└─ util/    Text.kt, Items.kt, Sched.kt, DurationParser.kt
 ```
 
 ### 2.1 데이터 흐름
@@ -111,7 +123,8 @@ tf_badge(type, id, display_name, lore, rarity, icon, permission, hidden, sort_or
          stats_equip, stats_own, PRIMARY KEY(type, id))
 tf_player(uuid PK, name, nickname, nickname_changed_at,
           equip_stat, equip_display, equip_seal, updated_at)   -- INDEX(nickname), INDEX(name)
-tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
+tf_owned(uuid, type, badge_id, obtained_at, expires_at, PRIMARY KEY(uuid, type, badge_id))
+         -- expires_at = 0 이면 영구. 기존 설치는 기동 시 ALTER TABLE 로 자동 추가
 ```
 
 스텟은 외부 JSON 라이브러리 없이 `max_health=2.0;attack_damage=1.5` 형태로 직렬화합니다(의존성 최소화).
@@ -125,10 +138,13 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 | DB 조회로 인한 틱 지연 | 모든 쿼리는 `AsyncScheduler`. 메인 스레드 JDBC 호출 0회. 접속 시점 로드는 `AsyncPlayerPreLoginEvent`(이미 비동기)에서 수행 |
 | 플레이스홀더 폭주 (TAB 등이 초당 수십 회 호출) | 플레이스홀더는 **메모리 캐시만 조회**. DB·계산 없음. 스텟 총합은 변경 시점에만 재계산해 저장 |
 | Attribute 재적용 비용 | 장착/획득/탈착 등 **상태 변경 시에만** 호출. 주기적 재적용 없음 |
-| 상시 반복 태스크 | 없음. 자동 저장만 N분 간격 비동기 1개 (dirty 프로필만) |
+| 상시 반복 태스크 | 자동 저장(N분, dirty 프로필만) + 표시 갱신 티커 1개. 이름표·탭리스트가 모두 꺼져 있으면 티커를 만들지 않음 |
 | GUI 아이템 생성 비용 | 페이지 단위 생성(45칸), 정적 버튼은 재사용. 클릭 시 필요한 페이지만 재빌드 |
 | 대량 지급(`giveall`) | 온라인은 캐시 갱신, 오프라인은 단일 배치 트랜잭션으로 비동기 처리 |
 | 저장 폭주 | dirty 플래그 + 배치 저장. 매 조작마다 전체 저장하지 않음 |
+| 보유 기한 검사 | 프로필별 `nextExpiry` 캐시 비교 1회. 만료 예정이 없으면 즉시 건너뜀 |
+| 순위 집계 | 전부 비동기 + TTL 캐시(기본 5분). 개인 순위 조회도 같은 주기로 스로틀 |
+| 이름표 | 플레이어당 **엔티티 1개**(TextDisplay 줄바꿈). 탑승 방식이라 위치 패킷 없음. 내용이 바뀔 때만 전송 |
 | Folia 호환 | `GlobalRegionScheduler` / `Entity#getScheduler` 사용으로 리전 스레드 안전 |
 
 ---
@@ -149,6 +165,7 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 | `/it seal <인장ID>` | 인장 장착 |
 | `/it unequip <stat\|show\|seal>` | 해제 |
 | `/it nick` | 닉네임 변경 팝업 |
+| `/it rank [title\|seal]` | 수집 개수 순위 |
 
 ### 관리자 (`titleforge.admin`)
 
@@ -158,11 +175,14 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 | `/it delete <title\|seal> <ID>` | 삭제 (보유 기록까지 정리) |
 | `/it edit <type> <ID> name\|lore\|rarity\|icon\|permission\|hidden\|order <값...>` | 수정 |
 | `/it edit <type> <ID> stat <equip\|own> <스텟> <수치>` | 스텟 수정 |
-| `/it give\|take <플레이어> <type> <ID>` | 지급/회수 (오프라인 지원) |
-| `/it giveall <type> <ID>` | 전체 지급 |
+| `/it give <플레이어> <type> <ID> [기간]` | 지급 (오프라인 지원, 기간 생략 시 영구) |
+| `/it take <플레이어> <type> <ID>` | 회수 (오프라인 지원) |
+| `/it extend <플레이어> <type> <ID> <기간>` | 보유 기한 변경 |
+| `/it giveall <type> <ID> [기간]` | 전체 지급 |
 | `/it setnick <플레이어> <닉네임>` / `/it resetnick <플레이어>` | 닉네임 관리 |
 | `/it admin` | 관리 GUI |
-| `/it reload` | 설정 리로드 |
+| `/it rank refresh` | 순위 캐시 비우기 |
+| `/it reload` | 설정 리로드 (stats.yml 포함) |
 
 모든 단계에 문맥 인식 탭 완성 제공.
 
@@ -189,7 +209,8 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 | 항목 | 예시 |
 |---|---|
 | 분류 | `[전투]` |
-| 바닐라 여부 | `바닐라 Attribute · minecraft:attack_damage` / `커스텀 · API·플레이스홀더 전용` |
+| **종류** | `바닐라 · minecraft:attack_damage (외부 플러그인 없이 적용)` / `MMOItems · CRITICAL_STRIKE_CHANCE (연동됨/미연동)` / `가상 스텟` |
+| 설명 | 스텟이 무슨 능력인지 한두 줄 설명 |
 | **현재 값** | `장착 스텟 +2` / `보유 스텟 +0.5` (미설정은 `-`) |
 | 적용 방식 | `합연산 (ADD_NUMBER)` / `기본값 비례 (ADD_SCALAR)` |
 | 플레이어 기본값 | `1` (최대 체력 20, 공격 속도 4 …) |
@@ -216,6 +237,65 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 - `0` 또는 `제거` → 스텟 삭제, `취소` → 변경 없이 종료
 - 권장 범위를 벗어나면 경고 후 적용, 내부값 10만을 넘으면 거부
 - 대기 시간은 `gui.chat-input-timeout-seconds`(기본 60초), 명령어를 입력하면 자동 취소
+
+---
+
+## 4-B. 2차 확장 기능
+
+### 보유 기한
+
+- 기본은 **영구**(`expires_at = 0`). 지급 시 기간을 붙이면 만료 시각이 저장됩니다.
+- `/it give <플레이어> <type> <ID> [기간]`, `/it extend <플레이어> <type> <ID> <기간>`,
+  `/it giveall <type> <ID> [기간]` — 표기: `30d` `12h` `90m` `2w` `3mo` `1y` `1d12h` `7일` `perm`
+- 만료 시 **자동 회수**: 보유 목록에서 제거 → 장착 중이었으면 해제 → 스텟 재계산 → 접속 중이면 알림
+- 검사는 프로필별 `nextExpiry` 캐시를 비교하는 방식이라 인원이 늘어도 비용이 늘지 않습니다.
+  접속 시점과 표시 갱신 티커에서 확인합니다.
+- 보관함 로어에 `보유 기한: 6일 3시간 남음` 또는 `영구` 표시.
+
+### MMOItems 스텟
+
+- 커스텀 스텟은 `stats.yml` 에서 MMOItems 스텟 ID 로 정의합니다(치명타 확률/피해, 마나, 쿨다운 감소 등).
+- 적용은 `hook/MythicLibHook.kt` 가 **리플렉션으로만** 수행합니다. MythicLib 이 없거나 시그니처가
+  다르면 연동만 꺼지고 값은 계속 보관·노출됩니다.
+- **바닐라 스텟 9종은 코드에 내장되어 항상 동작합니다.** MMOItems 를 쓰지 않는 서버도
+  이것만으로 완전히 운영할 수 있으며, GUI 는 각 스텟이 바닐라인지 MMO 인지(그리고 연동 여부까지)
+  로어에 항상 명시합니다.
+
+### 한글 ID
+
+- 칭호·인장 ID 에 완성형 한글 허용: `^[a-z0-9_가-힣]{1,32}$` (공백·특수문자는 계속 금지)
+- MySQL 은 `utf8mb4` 를 기본 접속 문자열로 사용합니다.
+
+### 수집 개수 순위
+
+- 만료되지 않은 보유만 집계합니다. 조회는 전부 비동기 + TTL 캐시.
+- `/it rank [title|seal]`, 관리자 `/it rank refresh`, 메인 GUI 의 순위 버튼
+- 순위 GUI 하단에 **내 순위 / 전체 인원**을 함께 표시합니다.
+
+### 여러 줄 이름표
+
+요청 예시(인장 / 다른 플러그인 칭호 / 칭호+닉네임)를 그대로 구성할 수 있습니다.
+
+**핵심 설계 판단**: `TextDisplay` 는 텍스트 안의 줄바꿈을 자체 렌더링하므로
+**줄 수와 무관하게 플레이어당 엔티티는 1개**입니다. 줄마다 엔티티를 띄우는 방식보다
+트래픽과 정리 비용이 크게 줄어듭니다.
+
+| 항목 | 방식 |
+|---|---|
+| 위치 | `addPassenger` 로 탑승 — 위치 갱신 패킷 불필요, 높이는 Transformation |
+| 본인 시야 | **기본으로 본인에게도 보입니다** (자기 인장을 확인할 수 있어야 하므로). `show-to-self` 로 조정 |
+| 바닐라 이름표 | 스코어보드 팀 `NAME_TAG_VISIBILITY = NEVER` 로 숨김 (`hide-vanilla`) |
+| 갱신 | 렌더 결과가 바뀐 경우에만 전송 |
+| 정리 | 비영속 + 퇴장/종료 시 제거 + 기동 시 태그 기준 유령 엔티티 청소 |
+
+각 줄은 MiniMessage + PlaceholderAPI 를 지원하므로 다른 플러그인의 칭호를 그대로 한 줄로 넣을 수 있습니다.
+
+### 탭리스트
+
+- `display.tablist` 의 머리말/꼬리말을 줄 목록으로 작성합니다(기본 꺼짐).
+- 내장 토큰: `<tps>` `<mspt>` `<online>` `<max>` `<ping>` `<time>` `<date>` `<world>` `<player>`
+  `<nickname>` `<seal>` `<title>` — TPS/MSPT 는 임계값에 따라 자동으로 색이 바뀝니다.
+- 서버 공통 값은 주기마다 1회만 계산해 전 인원이 공유하고, 내용이 바뀐 경우에만 전송합니다.
 
 ## 5. GUI 설계
 
@@ -245,6 +325,10 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 | `stat_<스텟ID>` | 총합 |
 | `stat_equip_<스텟ID>` / `stat_own_<스텟ID>` | 장착분 / 보유분 |
 | `has_title_<ID>` / `has_seal_<ID>` | yes/no |
+| `expiry_title_<ID>` / `expiry_seal_<ID>` | 남은 기간 ("6일 3시간" / "영구") |
+| `expiry_seconds_title_<ID>` | 남은 초 (영구는 -1) |
+| `rank_title` / `rank_seal` | 내 수집 순위 |
+| `rank_top_title_1` / `rank_top_title_1_count` | 1위 이름 / 보유 수 |
 
 전부 캐시 조회이므로 TAB 플러그인이 고빈도로 호출해도 안전합니다.
 
@@ -259,7 +343,9 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 1. **메인 스레드에서 JDBC·파일 I/O·네트워크 호출 금지.** 예외 없음. 저장소 접근은 `Sched.async` 안에서만.
 2. Bukkit 엔티티/인벤토리 API는 **반드시** 메인(또는 해당 엔티티 리전) 스레드에서. 비동기 → `Sched.entity(player) { }` 로 복귀.
 3. `Thread.sleep`, `Future.get()`, `join()` 을 메인 스레드에서 호출하지 않습니다.
-4. 새 반복 태스크(`runTaskTimer`)를 추가하지 않습니다. 필요하면 이벤트 기반으로 바꿉니다.
+4. 반복 태스크는 **표시 갱신용 티커 1개만** 허용합니다(`display/DisplayTicker.kt`). 새 태스크를 만들지 말고
+   여기에 얹으며, 주기는 설정 가능해야 하고 **내용이 바뀐 경우에만** 전송해야 합니다.
+   해당 기능이 모두 꺼져 있으면 티커 자체를 만들지 않습니다.
 
 ### 7.2 데이터 규칙
 
@@ -280,7 +366,13 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 13. 칭호와 인장은 `BadgeType` 하나로 분기합니다. 인장 전용 코드를 복제하지 않습니다.
 14. **인장은 어떤 경로로도 스텟을 가질 수 없습니다.** 저장 시점에 강제로 비웁니다(방어적 정규화).
 15. 장착 슬롯 3종(`STAT`/`DISPLAY`/`SEAL`)은 서로 독립입니다. 한 슬롯 변경이 다른 슬롯을 건드리지 않습니다.
-16. 스텟을 새로 추가할 때는 `StatType`에만 항목을 추가하면 저장·GUI·플레이스홀더·명령어가 자동으로 따라오도록 유지합니다(하드코딩된 스텟 분기 금지).
+16. 스텟은 `StatRegistry` 한 곳에서만 정의합니다. 바닐라 9종은 코드 내장(외부 플러그인 없이 항상 동작),
+    그 외는 `stats.yml`. 저장·GUI·플레이스홀더·명령어가 레지스트리를 따라오도록 유지하며
+    하드코딩된 스텟 분기를 만들지 않습니다.
+16-a. 스텟 값 맵의 키는 **스텟 id 문자열**입니다. 등록되지 않은 id 도 버리지 않고 보존합니다
+    (설정 실수로 저장된 값이 지워지면 안 됩니다).
+16-b. **MMOItems 연동은 선택 사항입니다.** 연동이 없어도 바닐라 스텟만으로 서버가 완전히 돌아가야 하며,
+    GUI 는 각 스텟의 종류(바닐라/MMO/가상)와 연동 여부를 항상 명시합니다.
 17. AttributeModifier는 반드시 `titleforge:` 네임스페이스 키로 부착하고, 재적용 전 같은 네임스페이스만 골라 제거합니다. 타 플러그인의 모디파이어를 건드리지 않습니다.
 18. 최대 체력 감소 시 현재 체력 클램프를 반드시 수행합니다(즉사 방지).
 
@@ -298,8 +390,8 @@ tf_owned(uuid, type, badge_id, obtained_at, PRIMARY KEY(uuid, type, badge_id))
 컴파일이 필요 없는 정적 검증기와, 순수 로직 단위 테스트를 함께 둡니다.
 
 ```bash
-python3 tools/verify_gui.py   # 메시지·설정 키 교차검증, 슬롯 배치 시뮬레이션, 메뉴 전환 규칙
-./gradlew test                # StatLayout / StatValueParser / Stats 단위 테스트
+python3 tools/verify_gui.py   # 메시지·설정 키, stats.yml 검증, 슬롯 배치 시뮬레이션, 메뉴 전환 규칙
+./gradlew test                # StatRegistry / StatLayout / StatValueParser / Stats / DurationParser
 ```
 
 `tools/verify_gui.py` 가 잡아내는 것:
@@ -310,6 +402,8 @@ python3 tools/verify_gui.py   # 메시지·설정 키 교차검증, 슬롯 배�
 4. 스텟 편집 창 슬롯 충돌 / 범위 초과 / 배치 누락 (배치도를 표로 출력)
 5. 각 메뉴의 하드코딩 슬롯이 창 크기를 벗어나는지
 6. GUI 안에서 `open()` 을 직접 호출하는 곳이 없는지 (반드시 `openLater()`)
+7. `stats.yml` 의 kind/분류/필수 필드가 올바른지, id 규칙과 중복 여부
+8. 스텟이 늘어난 상태(바닐라 9 + MMO 11)에서도 편집 GUI 슬롯이 충돌하지 않는지
 
 **서버 수동 확인 체크리스트**
 
@@ -326,6 +420,17 @@ python3 tools/verify_gui.py   # 메시지·설정 키 교차검증, 슬롯 배�
 - [ ] 인장 편집 창에는 스텟 편집 버튼이 없음
 - [ ] 편집 중 다른 관리자가 같은 칭호를 삭제하면 관리 목록으로 되돌아감
 - [ ] 편집을 반복해도 TPS/MSPT 변화 없음
+
+**2차 확장 확인**
+- [ ] `stats.yml` 의 MMO 스텟이 분류별로 뜨고 설명·종류(연동 여부)가 보임
+- [ ] MythicLib 없이도 바닐라 스텟이 정상 적용되고 경고 1줄만 남음
+- [ ] `/it give <p> title <id> 30d` → 로어에 남은 기간 → 만료 시 자동 회수·해제·알림
+- [ ] 오프라인 중 만료된 항목이 재접속 시 정리됨
+- [ ] 한글 ID(`/it create title 전설 ...`) 생성·장착·플레이스홀더 동작
+- [ ] 이름표 3줄 표시, **본인에게도 보임**, 퇴장 후 잔여 엔티티 없음, 재시작 후 유령 없음
+- [ ] 탭리스트에 시간·TPS·인원·외부 플레이스홀더 반영, TPS 색상 변화
+- [ ] `/it rank title` 순위와 내 순위 표시, 캐시 주기 동작
+- [ ] 이름표·탭리스트 모두 끄면 티커가 생성되지 않음(콘솔 로그 확인)
 
 ## 8. 작업 순서
 

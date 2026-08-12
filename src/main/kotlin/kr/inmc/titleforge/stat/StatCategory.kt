@@ -5,7 +5,7 @@ import org.bukkit.Material
 /**
  * 스텟 분류. 관리자 GUI 에서 한 줄씩 배치되며, 색과 아이콘이 그대로 라벨에 쓰인다.
  *
- * 새 분류를 추가하면 [StatLayout] 이 자동으로 행을 배정한다.
+ * 소속 스텟 목록은 [StatRegistry.byCategory] 가 돌려준다.
  */
 enum class StatCategory(
     val id: String,
@@ -19,6 +19,7 @@ enum class StatCategory(
     UTILITY("utility", "유틸리티", Material.EXPERIENCE_BOTTLE, "<green>"),
     ;
 
-    /** 이 분류에 속한 스텟 (enum 선언 순서 유지). */
-    fun stats(): List<StatType> = StatType.entries.filter { it.category == this }
+    companion object {
+        fun of(raw: String?): StatCategory? = entries.firstOrNull { it.id.equals(raw, ignoreCase = true) }
+    }
 }

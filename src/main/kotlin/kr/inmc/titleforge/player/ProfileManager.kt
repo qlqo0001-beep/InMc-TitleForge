@@ -3,12 +3,10 @@ package kr.inmc.titleforge.player
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
-import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.stat.Stats
 import kr.inmc.titleforge.util.Sched
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
-import java.util.EnumMap
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,6 +46,12 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
                 plugin.logger.severe("프로필 로드 실패 ($name): ${it.message}")
                 PlayerProfile(uuid, name)
             }
+        // 오프라인 동안 만료된 항목을 먼저 정리한 뒤 스텟을 계산한다.
+        val expired = profile.expired()
+        if (expired.isNotEmpty()) {
+            expired.forEach { (type, id) -> profile.revoke(type, id) }
+            profile.refreshExpiryCache()
+        }
         recalculate(profile)
         cache[uuid] = profile
     }
@@ -149,7 +153,7 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
      */
     fun recalculate(profile: PlayerProfile) {
         val registry = plugin.badges
-        val ownTotals = EnumMap<StatType, Double>(StatType::class.java)
+        val ownTotals = LinkedHashMap<String, Double>()
 
         for (id in profile.owned(BadgeType.TITLE)) {
             val badge: Badge = registry.get(BadgeType.TITLE, id) ?: continue
@@ -192,5 +196,56 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
         for (player in Bukkit.getOnlinePlayers()) {
             plugin.nameDisplay.refresh(player)
         }
+    }
+
+    // ── 보유 기한 ──────────────────────────────────────────────────────
+
+    /**
+     * 캐시된 프로필의 만료 항목을 회수한다.
+     *
+     * [PlayerProfile.nextExpiry] 캐시 덕분에 만료 예정이 없는 프로필은 비교 한 번으로 끝난다.
+     * 인원이 늘어도 비용이 늘지 않는다.
+     *
+     * @return 회수가 일어난 프로필 수
+     */
+    fun sweepExpired(): Int {
+        val now = System.currentTimeMillis()
+        var touched = 0
+        for (profile in cache.values) {
+            if (now < profile.nextExpiry) continue
+            val expired = profile.expired(now)
+            if (expired.isEmpty()) {
+                profile.refreshExpiryCache()
+                continue
+            }
+            touched++
+            handleExpired(profile, expired)
+        }
+        return touched
+    }
+
+    /** 프로필 1개의 만료 항목을 즉시 정리한다. 로그인 직후에도 쓴다. */
+    fun sweepExpired(profile: PlayerProfile) {
+        val expired = profile.expired()
+        if (expired.isNotEmpty()) handleExpired(profile, expired)
+    }
+
+    private fun handleExpired(profile: PlayerProfile, expired: List<Pair<BadgeType, String>>) {
+        val player = Bukkit.getPlayer(profile.uuid)
+        for ((type, id) in expired) {
+            profile.revoke(type, id)
+            if (player == null) continue
+            val badge = plugin.badges.get(type, id)
+            plugin.messages.send(
+                player,
+                "badge.expired",
+                "type" to type.display,
+                "name" to (badge?.nameComponent ?: net.kyori.adventure.text.Component.text(id)),
+            )
+        }
+        profile.refreshExpiryCache()
+        refreshStats(profile)
+        if (player != null) plugin.nameDisplay.refresh(player)
+        save(profile)
     }
 }

@@ -6,7 +6,12 @@ import kr.inmc.titleforge.badge.BadgeService
 import kr.inmc.titleforge.command.TitleForgeCommand
 import kr.inmc.titleforge.config.Messages
 import kr.inmc.titleforge.config.Settings
+import kr.inmc.titleforge.display.DisplayTicker
+import kr.inmc.titleforge.display.NametagService
+import kr.inmc.titleforge.display.TablistService
 import kr.inmc.titleforge.gui.Menu
+import kr.inmc.titleforge.hook.MythicLibHook
+import kr.inmc.titleforge.hook.PlaceholderService
 import kr.inmc.titleforge.hook.VaultHook
 import kr.inmc.titleforge.listener.PlayerListener
 import kr.inmc.titleforge.input.AnvilTextInput
@@ -14,7 +19,9 @@ import kr.inmc.titleforge.input.ChatTextInput
 import kr.inmc.titleforge.nickname.NameDisplayService
 import kr.inmc.titleforge.nickname.NicknameService
 import kr.inmc.titleforge.player.ProfileManager
+import kr.inmc.titleforge.rank.RankService
 import kr.inmc.titleforge.stat.StatApplier
+import kr.inmc.titleforge.stat.StatRegistry
 import kr.inmc.titleforge.storage.SqlStorage
 import kr.inmc.titleforge.storage.Storage
 import kr.inmc.titleforge.util.Sched
@@ -33,6 +40,10 @@ class TitleForgePlugin : JavaPlugin() {
         private set
 
     lateinit var badges: BadgeRegistry
+        private set
+
+    /** 스텟 정의 레지스트리 (바닐라 내장 + stats.yml). */
+    lateinit var stats: StatRegistry
         private set
 
     lateinit var profiles: ProfileManager
@@ -56,10 +67,28 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var chatInput: ChatTextInput
         private set
 
+    lateinit var nametags: NametagService
+        private set
+
+    lateinit var tablist: TablistService
+        private set
+
+    lateinit var rank: RankService
+        private set
+
+    lateinit var placeholders: PlaceholderService
+        private set
+
+    private lateinit var ticker: DisplayTicker
+
     var vault: VaultHook? = null
         private set
 
     private var autosaveTask: ScheduledTask? = null
+
+    private companion object {
+        const val STATS_FILE = "stats.yml"
+    }
 
     override fun onEnable() {
         saveDefaultConfig()
@@ -69,13 +98,21 @@ class TitleForgePlugin : JavaPlugin() {
         settings = Settings.load(config)
 
         badges = BadgeRegistry()
-        statApplier = StatApplier(logger)
+        stats = StatRegistry(logger)
+        stats.reload(loadStatsConfig())
+        statApplier = StatApplier(logger, stats)
+        statApplier.refreshDefinitions()
         profiles = ProfileManager(this)
         badgeService = BadgeService(this)
         nameDisplay = NameDisplayService(this)
         nicknames = NicknameService(this)
         anvilInput = AnvilTextInput(this)
         chatInput = ChatTextInput(this)
+        nametags = NametagService(this)
+        tablist = TablistService(this)
+        rank = RankService(this)
+        placeholders = PlaceholderService(logger)
+        ticker = DisplayTicker(this)
 
         if (!setupStorage()) {
             logger.severe("저장소 초기화에 실패해 플러그인을 비활성화합니다.")
@@ -87,6 +124,8 @@ class TitleForgePlugin : JavaPlugin() {
         registerCommands()
         setupHooks()
         startAutosave()
+        nametags.cleanupOrphans()
+        ticker.start()
 
         // 리로드 후 이미 접속해 있는 플레이어 복구
         for (player in Bukkit.getOnlinePlayers()) {
@@ -105,6 +144,8 @@ class TitleForgePlugin : JavaPlugin() {
     override fun onDisable() {
         autosaveTask?.cancel()
         autosaveTask = null
+        if (::ticker.isInitialized) ticker.stop()
+        if (::nametags.isInitialized) nametags.removeAll()
 
         if (::profiles.isInitialized) profiles.flushBlocking()
         if (::storage.isInitialized) runCatching { storage.close() }
@@ -115,7 +156,25 @@ class TitleForgePlugin : JavaPlugin() {
         reloadConfig()
         settings = Settings.load(config)
         messages.reload()
+        stats.reload(loadStatsConfig())
+        statApplier.refreshDefinitions()
+        rank.invalidate()
         startAutosave()
+        ticker.start()
+        nametags.refreshAll()
+        tablist.clear()
+    }
+
+    /** stats.yml 을 읽는다. 없으면 기본 파일을 깔아준다. */
+    private fun loadStatsConfig(): org.bukkit.configuration.ConfigurationSection? {
+        val file = java.io.File(dataFolder, STATS_FILE)
+        if (!file.exists()) saveResource(STATS_FILE, false)
+        return runCatching {
+            org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file)
+        }.getOrElse {
+            logger.severe("stats.yml 을 읽지 못했습니다 (${it.message}). 바닐라 스텟만 사용합니다.")
+            null
+        }
     }
 
     private fun setupStorage(): Boolean = runCatching {
@@ -163,6 +222,19 @@ class TitleForgePlugin : JavaPlugin() {
                 kr.inmc.titleforge.hook.PlaceholderHook(this).register()
                 logger.info("PlaceholderAPI 연동 활성화 (%titleforge_...%)")
             }.onFailure { logger.warning("PlaceholderAPI 연동 실패: ${it.message}") }
+        }
+        placeholders.setup()
+
+        // MMOItems(MythicLib). 없으면 바닐라 스텟만으로 정상 동작한다.
+        val mmoStats = stats.ofKind(kr.inmc.titleforge.stat.StatKind.MMO).size
+        if (mmoStats > 0) {
+            val hook = MythicLibHook.setup(logger)
+            statApplier.mythicLib = hook
+            if (hook != null) {
+                logger.info("MMOItems 스텟 연동 활성화 (${mmoStats}종)")
+            } else {
+                logger.info("MMOItems 미연동 — MMO 스텟 ${mmoStats}종은 값만 보관됩니다.")
+            }
         }
     }
 

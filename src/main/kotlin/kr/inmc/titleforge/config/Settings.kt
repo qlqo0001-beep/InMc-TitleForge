@@ -1,6 +1,5 @@
 package kr.inmc.titleforge.config
 
-import kr.inmc.titleforge.stat.StatType
 import kr.inmc.titleforge.stat.Stats
 import org.bukkit.Material
 import org.bukkit.configuration.ConfigurationSection
@@ -16,6 +15,7 @@ class Settings private constructor(
     val nickname: NicknameSettings,
     val display: DisplaySettings,
     val gui: GuiSettings,
+    val rank: RankSettings,
     val debug: Boolean,
 ) {
 
@@ -42,8 +42,8 @@ class Settings private constructor(
     class TitleSettings(
         val noneDisplay: String,
         val noneStat: String,
-        /** 보유 개수 → 추가 스텟. 개수 오름차순 정렬. */
-        val milestones: List<Pair<Int, Map<StatType, Double>>>,
+        /** 보유 개수 → 추가 스텟(스텟 id 기준). 개수 오름차순 정렬. */
+        val milestones: List<Pair<Int, Map<String, Double>>>,
     )
 
     class NicknameSettings(
@@ -111,7 +111,48 @@ class Settings private constructor(
         val tab: Boolean,
         val chatEnabled: Boolean,
         val chatFormat: String,
-        val nametag: Boolean,
+        val nametag: NametagSettings,
+        val tablist: TablistSettings,
+        /** 표시 갱신 티커 주기(틱). */
+        val refreshTicks: Long,
+    )
+
+    /**
+     * 머리 위 이름표.
+     *
+     * 여러 줄이 필요하므로 TextDisplay 1개에 줄바꿈으로 렌더링한다.
+     * 줄 수만큼 엔티티를 띄우지 않으므로 인원이 많아도 부담이 적다.
+     */
+    class NametagSettings(
+        val enabled: Boolean,
+        /** 위에서부터 한 줄씩. 빈 줄(치환 결과가 비면)은 자동 생략. */
+        val lines: List<String>,
+        val heightOffset: Double,
+        val viewRange: Double,
+        val seeThrough: Boolean,
+        val textShadow: Boolean,
+        val background: Boolean,
+        val backgroundColor: Int,
+        /** 본인에게도 보일지. 인장을 스스로 확인할 수 있어야 하므로 기본 true. */
+        val showToSelf: Boolean,
+        /** 바닐라 이름표를 숨길지. */
+        val hideVanillaNametag: Boolean,
+    )
+
+    class TablistSettings(
+        val enabled: Boolean,
+        val header: List<String>,
+        val footer: List<String>,
+        val tpsGood: Double,
+        val tpsWarn: Double,
+        val msptGood: Double,
+        val msptWarn: Double,
+    )
+
+    class RankSettings(
+        val enabled: Boolean,
+        val cacheSeconds: Long,
+        val topSize: Int,
     )
 
     class GuiSettings(
@@ -192,7 +233,29 @@ class Settings private constructor(
                     "display.chat.format",
                     "<nameplate><dark_gray> » </dark_gray><white><message></white>",
                 )!!,
-                nametag = config.getBoolean("display.nametag", false),
+                nametag = NametagSettings(
+                    enabled = config.getBoolean("display.nametag.enabled", false),
+                    lines = config.getStringList("display.nametag.lines")
+                        .ifEmpty { listOf("<seal>", "<title>", "<nickname>") },
+                    heightOffset = config.getDouble("display.nametag.height-offset", 0.4),
+                    viewRange = config.getDouble("display.nametag.view-range", 32.0).coerceAtLeast(1.0),
+                    seeThrough = config.getBoolean("display.nametag.see-through", false),
+                    textShadow = config.getBoolean("display.nametag.text-shadow", true),
+                    background = config.getBoolean("display.nametag.background", false),
+                    backgroundColor = config.getInt("display.nametag.background-color", 0x40000000),
+                    showToSelf = config.getBoolean("display.nametag.show-to-self", true),
+                    hideVanillaNametag = config.getBoolean("display.nametag.hide-vanilla", true),
+                ),
+                tablist = TablistSettings(
+                    enabled = config.getBoolean("display.tablist.enabled", false),
+                    header = config.getStringList("display.tablist.header"),
+                    footer = config.getStringList("display.tablist.footer"),
+                    tpsGood = config.getDouble("display.tablist.tps-good", 19.0),
+                    tpsWarn = config.getDouble("display.tablist.tps-warn", 15.0),
+                    msptGood = config.getDouble("display.tablist.mspt-good", 25.0),
+                    msptWarn = config.getDouble("display.tablist.mspt-warn", 45.0),
+                ),
+                refreshTicks = config.getLong("display.refresh-ticks", 20L).coerceAtLeast(5L),
             )
 
             val gui = GuiSettings(
@@ -210,6 +273,12 @@ class Settings private constructor(
                 iconEquipped = material(config.getString("gui.icons.equipped"), Material.ENCHANTED_BOOK),
             )
 
+            val rank = RankSettings(
+                enabled = config.getBoolean("rank.enabled", true),
+                cacheSeconds = config.getLong("rank.cache-seconds", 300L).coerceAtLeast(10L),
+                topSize = config.getInt("rank.top-size", 45).coerceIn(1, 45),
+            )
+
             return Settings(
                 storage = storage,
                 title = title,
@@ -217,20 +286,21 @@ class Settings private constructor(
                 nickname = nickname,
                 display = display,
                 gui = gui,
+                rank = rank,
                 debug = config.getBoolean("debug", false),
             )
         }
 
-        private fun readMilestones(section: ConfigurationSection?): List<Pair<Int, Map<StatType, Double>>> {
+        private fun readMilestones(section: ConfigurationSection?): List<Pair<Int, Map<String, Double>>> {
             if (section == null) return emptyList()
-            val result = ArrayList<Pair<Int, Map<StatType, Double>>>()
+            val result = ArrayList<Pair<Int, Map<String, Double>>>()
             for (key in section.getKeys(false)) {
                 val count = key.toIntOrNull() ?: continue
                 val inner = section.getConfigurationSection(key) ?: continue
-                val stats = HashMap<StatType, Double>()
+                val stats = LinkedHashMap<String, Double>()
                 for (statKey in inner.getKeys(false)) {
-                    val stat = StatType.of(statKey) ?: continue
-                    stats[stat] = inner.getDouble(statKey)
+                    val value = inner.getDouble(statKey)
+                    if (value != 0.0) stats[statKey.lowercase()] = value
                 }
                 if (stats.isNotEmpty()) result += count to Stats.merge(stats)
             }

@@ -106,10 +106,15 @@ class SqlStorage(
                     type ${text(16)} NOT NULL,
                     badge_id ${text(32)} NOT NULL,
                     obtained_at BIGINT NOT NULL DEFAULT 0,
+                    expires_at BIGINT NOT NULL DEFAULT 0,
                     PRIMARY KEY (uuid, type, badge_id)
                 )
                 """.trimIndent(),
             )
+            // 기존 설치 마이그레이션: 컬럼이 이미 있으면 실패하므로 조용히 무시한다.
+            for (sql in MIGRATIONS) {
+                runCatching { st.executeUpdate(sql) }
+            }
             // MySQL 은 CREATE INDEX IF NOT EXISTS 를 지원하지 않으므로 실패를 무시한다.
             for (sql in INDEX_STATEMENTS) {
                 runCatching { st.executeUpdate(if (sqlite) sql else sql.replace("IF NOT EXISTS ", "")) }
@@ -222,15 +227,23 @@ class SqlStorage(
                 }
             }
         }
-        conn.prepareStatement("SELECT type, badge_id, obtained_at FROM tf_owned WHERE uuid = ?").use { st ->
+        conn.prepareStatement(
+            "SELECT type, badge_id, obtained_at, expires_at FROM tf_owned WHERE uuid = ?",
+        ).use { st ->
             st.setString(1, uuid.toString())
             st.executeQuery().use { rs ->
                 while (rs.next()) {
                     val type = BadgeType.of(rs.getString("type")) ?: continue
-                    profile.grant(type, rs.getString("badge_id"), rs.getLong("obtained_at"))
+                    profile.grant(
+                        type = type,
+                        id = rs.getString("badge_id"),
+                        timestamp = rs.getLong("obtained_at"),
+                        expiresAt = rs.getLong("expires_at"),
+                    )
                 }
             }
         }
+        profile.refreshExpiryCache()
         profile.consumeDirty()
         profile
     }
@@ -273,7 +286,7 @@ class SqlStorage(
                     st.executeBatch()
                 }
                 conn.prepareStatement(
-                    "$insertIgnore tf_owned (uuid, type, badge_id, obtained_at) VALUES (?, ?, ?, ?)",
+                    "$insertIgnore tf_owned (uuid, type, badge_id, obtained_at, expires_at) VALUES (?, ?, ?, ?, ?)",
                 ).use { st ->
                     for (profile in profiles) {
                         for (type in BadgeType.entries) {
@@ -282,6 +295,7 @@ class SqlStorage(
                                 st.setString(2, type.id)
                                 st.setString(3, id)
                                 st.setLong(4, profile.obtainedAt(type, id))
+                                st.setLong(5, profile.expiryOf(type, id))
                                 st.addBatch()
                             }
                         }
@@ -325,22 +339,111 @@ class SqlStorage(
         }
     }
 
-    override fun grantToAll(type: BadgeType, id: String): Int = connection { conn ->
+    override fun grantToAll(type: BadgeType, id: String, expiresAt: Long): Int = connection { conn ->
         conn.prepareStatement(
-            "$insertIgnore tf_owned (uuid, type, badge_id, obtained_at) SELECT uuid, ?, ?, ? FROM tf_player",
+            "$insertIgnore tf_owned (uuid, type, badge_id, obtained_at, expires_at) " +
+                "SELECT uuid, ?, ?, ?, ? FROM tf_player",
         ).use { st ->
             st.setString(1, type.id)
             st.setString(2, id)
             st.setLong(3, System.currentTimeMillis())
+            st.setLong(4, expiresAt)
             st.executeUpdate()
         }
     }
 
+    // ── 순위 ───────────────────────────────────────────────────────────
+
+    /** 만료되지 않은 보유만 센다. */
+    private val liveOwnership = "o.type = ? AND (o.expires_at = 0 OR o.expires_at > ?)"
+
+    override fun topCollectors(type: BadgeType, limit: Int): List<RankEntry> = connection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT o.uuid AS uuid, COALESCE(p.name, '?') AS name, COUNT(*) AS amount
+            FROM tf_owned o LEFT JOIN tf_player p ON p.uuid = o.uuid
+            WHERE $liveOwnership
+            GROUP BY o.uuid, p.name
+            ORDER BY amount DESC, name ASC
+            LIMIT ?
+            """.trimIndent(),
+        ).use { st ->
+            st.setString(1, type.id)
+            st.setLong(2, System.currentTimeMillis())
+            st.setInt(3, limit.coerceIn(1, 200))
+            st.executeQuery().use { rs ->
+                val result = ArrayList<RankEntry>()
+                var rank = 0
+                while (rs.next()) {
+                    rank++
+                    val uuid = runCatching { UUID.fromString(rs.getString("uuid")) }.getOrNull() ?: continue
+                    result += RankEntry(uuid, rs.getString("name") ?: "?", rs.getInt("amount"), rank)
+                }
+                result
+            }
+        }
+    }
+
+    override fun rankOf(type: BadgeType, uuid: UUID): RankEntry? = connection { conn ->
+        val now = System.currentTimeMillis()
+        val count = conn.prepareStatement(
+            "SELECT COUNT(*) FROM tf_owned o WHERE o.uuid = ? AND $liveOwnership",
+        ).use { st ->
+            st.setString(1, uuid.toString())
+            st.setString(2, type.id)
+            st.setLong(3, now)
+            st.executeQuery().use { rs -> if (rs.next()) rs.getInt(1) else 0 }
+        }
+        if (count == 0) {
+            null
+        } else {
+            // 나보다 많이 가진 사람 수 + 1 = 내 순위
+            val higher = conn.prepareStatement(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT o.uuid FROM tf_owned o
+                    WHERE $liveOwnership
+                    GROUP BY o.uuid HAVING COUNT(*) > ?
+                ) ranked
+                """.trimIndent(),
+            ).use { st ->
+                st.setString(1, type.id)
+                st.setLong(2, now)
+                st.setInt(3, count)
+                st.executeQuery().use { rs -> if (rs.next()) rs.getInt(1) else 0 }
+            }
+            val name = conn.prepareStatement("SELECT name FROM tf_player WHERE uuid = ?").use { st ->
+                st.setString(1, uuid.toString())
+                st.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+            RankEntry(uuid, name ?: "?", count, higher + 1)
+        }
+    }
+
+    override fun collectorCount(type: BadgeType): Int = connection { conn ->
+        conn.prepareStatement(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT o.uuid FROM tf_owned o WHERE $liveOwnership GROUP BY o.uuid
+            ) ranked
+            """.trimIndent(),
+        ).use { st ->
+            st.setString(1, type.id)
+            st.setLong(2, System.currentTimeMillis())
+            st.executeQuery().use { rs -> if (rs.next()) rs.getInt(1) else 0 }
+        }
+    }
+
     private companion object {
+        val MIGRATIONS = listOf(
+            "ALTER TABLE tf_owned ADD COLUMN expires_at BIGINT NOT NULL DEFAULT 0",
+        )
+
         val INDEX_STATEMENTS = listOf(
             "CREATE INDEX IF NOT EXISTS idx_tf_player_name ON tf_player (name)",
             "CREATE INDEX IF NOT EXISTS idx_tf_player_nickname ON tf_player (nickname)",
             "CREATE INDEX IF NOT EXISTS idx_tf_owned_badge ON tf_owned (type, badge_id)",
+            "CREATE INDEX IF NOT EXISTS idx_tf_owned_rank ON tf_owned (type, uuid)",
         )
     }
 }

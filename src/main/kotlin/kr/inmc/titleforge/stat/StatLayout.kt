@@ -10,7 +10,7 @@ package kr.inmc.titleforge.stat
  * - 6줄(54칸) 고정. 0행은 헤더, 5행은 안내/이동 버튼.
  * - 1~4행이 분류 영역. 각 행의 첫 칸(열 0)은 분류 라벨, 열 1~8 에 스텟이 들어간다.
  * - 한 분류의 스텟이 8개를 넘으면 라벨 없이 다음 행으로 이어진다.
- * - 행이 모자라면 배치하지 못한 스텟을 [Layout.overflow] 로 돌려준다(경고 로그용).
+ * - 행이 모자라면 배치하지 못한 스텟을 [Layout.overflow] 로 돌려준다(경고 + 페이지 안내용).
  */
 object StatLayout {
 
@@ -27,6 +27,9 @@ object StatLayout {
     /** 한 행에 들어갈 수 있는 스텟 수 (열 0 은 라벨). */
     const val MAX_PER_ROW = COLUMNS - 1
 
+    /** 한 페이지에 배치 가능한 최대 스텟 수. */
+    const val MAX_PER_PAGE = 4 * MAX_PER_ROW
+
     // 헤더 슬롯
     const val SLOT_BACK = 0
     const val SLOT_SUMMARY = 4
@@ -34,28 +37,33 @@ object StatLayout {
 
     // 푸터 슬롯
     val SLOT_HELP = FOOTER_ROW * COLUMNS
+    val SLOT_PREV = FOOTER_ROW * COLUMNS + 2
     val SLOT_LEGEND = FOOTER_ROW * COLUMNS + 4
+    val SLOT_NEXT = FOOTER_ROW * COLUMNS + 6
     val SLOT_FOOTER_BACK = FOOTER_ROW * COLUMNS + 8
 
     class Layout(
         /** 분류 → 라벨 슬롯 */
         val categorySlots: Map<StatCategory, Int>,
         /** 스텟 → 아이콘 슬롯 */
-        val statSlots: Map<StatType, Int>,
-        /** 자리가 없어 배치하지 못한 스텟 */
-        val overflow: List<StatType>,
+        val statSlots: Map<Stat, Int>,
+        /** 자리가 없어 이 페이지에 배치하지 못한 스텟 */
+        val overflow: List<Stat>,
     ) {
         /** 슬롯 → 스텟 역방향 조회 (클릭 처리용). */
-        val bySlot: Map<Int, StatType> = statSlots.entries.associate { (stat, slot) -> slot to stat }
+        val bySlot: Map<Int, Stat> = statSlots.entries.associate { (stat, slot) -> slot to stat }
     }
 
+    /**
+     * @param statsOf 분류별 스텟 목록 (레지스트리에서 주입)
+     */
     fun compute(
         categories: List<StatCategory> = StatCategory.entries,
-        statsOf: (StatCategory) -> List<StatType> = { it.stats() },
+        statsOf: (StatCategory) -> List<Stat>,
     ): Layout {
         val categorySlots = LinkedHashMap<StatCategory, Int>()
-        val statSlots = LinkedHashMap<StatType, Int>()
-        val overflow = ArrayList<StatType>()
+        val statSlots = LinkedHashMap<Stat, Int>()
+        val overflow = ArrayList<Stat>()
 
         val availableRows = ArrayDeque(CATEGORY_ROWS)
 

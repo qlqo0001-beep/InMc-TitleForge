@@ -59,8 +59,11 @@ def read_all() -> str:
 
 # ── 1~3. 키 교차검증 ────────────────────────────────────────────────────────
 
-MESSAGE_ROOTS = ("gui", "stat", "input", "badge", "nickname", "general", "player", "help")
-CONFIG_ROOTS = ("storage", "title", "seal", "nickname", "display", "gui", "debug")
+MESSAGE_ROOTS = (
+    "gui", "stat", "input", "badge", "nickname", "general", "player", "help",
+    "rank", "placeholder",
+)
+CONFIG_ROOTS = ("storage", "title", "seal", "nickname", "display", "gui", "rank", "debug")
 
 KEY_PATTERN = re.compile(r'"((?:%s)\.[a-z0-9._-]+)"' % "|".join(MESSAGE_ROOTS))
 CONFIG_PATTERN = re.compile(r'(?:getString|getInt|getLong|getBoolean|getDouble|getStringList|getConfigurationSection)\(\s*"([a-z0-9._-]+)"')
@@ -137,12 +140,43 @@ FOOTER_SLOTS = {
 
 
 def parse_stats() -> list[tuple[str, str]]:
-    """StatType.kt 에서 (스텟 id, 분류) 를 뽑는다."""
-    text = (KOTLIN / "kr/inmc/titleforge/stat/StatType.kt").read_text(encoding="utf-8")
-    body = text.split("enum class StatType", 1)[1]
-    body = body.split("\n    ;", 1)[0]
-    pattern = re.compile(r'"([a-z_]+)",\s*"[^"]+",\s*(?:"[a-z_]+"|null),\s*StatCategory\.([A-Z_]+)')
-    return pattern.findall(body)
+    """
+    실제 레지스트리 구성과 동일하게 (스텟 id, 분류) 를 모은다.
+
+    바닐라 기본값은 StatRegistry.defaults() 에서, MMO/가상 스텟은 stats.yml 에서 읽는다.
+    """
+    stats: dict[str, str] = {}
+
+    # 1) 코드에 내장된 바닐라 기본 정의
+    text = (KOTLIN / "kr/inmc/titleforge/stat/StatRegistry.kt").read_text(encoding="utf-8")
+    body = text.split("fun defaults()", 1)[1]
+    pattern = re.compile(
+        r'id\s*=\s*"([a-z0-9_]+)".*?category\s*=\s*StatCategory\.([A-Z_]+)',
+        re.DOTALL,
+    )
+    for stat_id, category in pattern.findall(body):
+        stats[stat_id] = category
+
+    # 2) stats.yml 정의 (같은 id 면 덮어쓴다 — 레지스트리와 동일한 규칙)
+    stats_file = RESOURCES / "stats.yml"
+    if stats_file.exists():
+        data = yaml.safe_load(stats_file.read_text(encoding="utf-8")) or {}
+        for stat_id, node in data.items():
+            if not isinstance(node, dict):
+                continue
+            category = str(node.get("category", "")).upper() or stats.get(stat_id, "UTILITY")
+            kind = str(node.get("kind", "")).lower()
+            if kind not in ("", "vanilla", "mmo", "virtual"):
+                fail(f"stats.yml: {stat_id} 의 kind 가 잘못됐습니다: {kind}")
+            if kind == "vanilla" and "attribute" not in node and stat_id not in stats:
+                fail(f"stats.yml: {stat_id} 는 kind=vanilla 인데 attribute 가 없습니다.")
+            if kind == "mmo" and "mmo-stat" not in node:
+                fail(f"stats.yml: {stat_id} 는 kind=mmo 인데 mmo-stat 이 없습니다.")
+            if not re.fullmatch(r"[a-z0-9_]{1,48}", str(stat_id)):
+                fail(f"stats.yml: 잘못된 스텟 id: {stat_id}")
+            stats[stat_id] = category
+
+    return list(stats.items())
 
 
 def parse_categories() -> list[str]:

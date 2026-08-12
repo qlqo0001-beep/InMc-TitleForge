@@ -28,7 +28,7 @@ object StatValueParser {
     private val CANCEL_WORDS = setOf("취소", "cancel", "c")
     private val REMOVE_WORDS = setOf("제거", "삭제", "remove", "reset", "delete", "none", "-")
 
-    fun parse(stat: StatType, rawInput: String): Result {
+    fun parse(stat: Stat, rawInput: String): Result {
         val input = rawInput.trim().replace(",", "").replace("%", "")
         if (input.isEmpty()) return Result.Invalid
         if (input.lowercase() in CANCEL_WORDS) return Result.Cancel
@@ -39,7 +39,7 @@ object StatValueParser {
         if (display == 0.0) return Result.Remove
 
         val internal = round(stat.toInternal(display), INTERNAL_DECIMALS)
-        if (kotlin.math.abs(internal) > StatType.HARD_LIMIT) return Result.TooLarge(StatType.HARD_LIMIT)
+        if (kotlin.math.abs(internal) > Stat.HARD_LIMIT) return Result.TooLarge(Stat.HARD_LIMIT)
         if (internal == 0.0) return Result.Remove
 
         return Result.Set(

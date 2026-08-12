@@ -16,7 +16,9 @@ storage:
     username: root
     password: ''
     # MariaDB 드라이버를 사용하며 MySQL 서버에도 그대로 연결됩니다.
-    properties: 'useUnicode=true&characterEncoding=utf8'
+    # 한글 ID/닉네임을 위해 utf8mb4 를 권장합니다.
+    # 테이블도 utf8mb4 로 만들어 주세요: ALTER DATABASE titleforge CHARACTER SET utf8mb4;
+    properties: 'useUnicode=true&characterEncoding=utf8mb4'
     pool-size: 6
   # 변경된 프로필을 몇 초마다 일괄 저장할지 (0 = 자동 저장 끔)
   autosave-seconds: 300
@@ -97,8 +99,51 @@ display:
   chat:
     enabled: false
     format: '<nameplate><dark_gray> » </dark_gray><white><message></white>'
-  # 머리 위 이름표 (스코어보드 팀 기반, 기본 꺼짐)
-  nametag: false
+  # 표시 갱신 티커 주기(틱). 이름표·탭리스트가 모두 꺼져 있으면 태스크를 만들지 않습니다.
+  refresh-ticks: 20
+
+  # ── 머리 위 이름표 (여러 줄 지원, 기본 꺼짐) ──
+  # TextDisplay 1개에 줄바꿈으로 렌더링하므로 줄이 늘어도 엔티티는 1개입니다.
+  nametag:
+    enabled: false
+    # 위에서부터 한 줄씩. 치환 결과가 비면 그 줄은 자동으로 빠집니다.
+    # <seal> <title> <nickname> <player> 와 다른 플러그인의 %플레이스홀더% 사용 가능
+    lines:
+      - '<seal>'
+      - '%vault_prefix%'      # 예시: 다른 플러그인 칭호
+      - '<title><nickname>'
+    # 머리 위 높이 (블록)
+    height-offset: 0.4
+    # 보이는 거리
+    view-range: 32.0
+    # 벽 너머로도 보이게 할지
+    see-through: false
+    text-shadow: true
+    background: false
+    # ARGB 정수. background: true 일 때만 사용
+    background-color: 1073741824
+    # 본인에게도 보일지. 자기 인장을 확인할 수 있어야 하므로 기본 true
+    show-to-self: true
+    # 바닐라 이름표(아이디)를 숨길지
+    hide-vanilla: true
+
+  # ── 탭리스트 머리말/꼬리말 (기본 꺼짐) ──
+  tablist:
+    enabled: false
+    # 내장 토큰: <tps> <mspt> <online> <max> <ping> <time> <date> <world> <player>
+    #            <nickname> <seal> <title>
+    # 다른 플러그인의 %플레이스홀더% 도 사용 가능합니다.
+    header:
+      - '<gradient:#8be9fd:#bd93f9><bold>InMc 서버</bold></gradient>'
+      - '<gray>접속 <white><online><gray>/<white><max>  <dark_gray>|  <gray>TPS <tps>'
+    footer:
+      - '<gray><date> <white><time>'
+      - '<gray>지연 <white><ping>ms  <dark_gray>|  <gray>MSPT <mspt>'
+    # TPS/MSPT 색상 임계값
+    tps-good: 19.0
+    tps-warn: 15.0
+    mspt-good: 25.0
+    mspt-warn: 45.0
 
 gui:
   # 목록 GUI 한 페이지에 표시할 칸 수 (9의 배수, 최대 45)
@@ -117,6 +162,14 @@ gui:
     owned: PAPER
     locked: GRAY_DYE
     equipped: ENCHANTED_BOOK
+
+# 칭호·인장 수집 개수 순위
+rank:
+  enabled: true
+  # 집계 결과 캐시 시간(초). 짧을수록 최신이지만 쿼리가 잦아집니다.
+  cache-seconds: 300
+  # 순위 GUI 에 표시할 인원 수 (최대 45)
+  top-size: 45
 
 # 콘솔 디버그 로그
 debug: false

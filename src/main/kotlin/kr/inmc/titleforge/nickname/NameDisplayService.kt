@@ -6,7 +6,6 @@ import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.player.PlayerProfile
 import kr.inmc.titleforge.util.Text
 import net.kyori.adventure.text.Component
-import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -40,6 +39,16 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
         return badge.nameComponent.append(Text.mini(plugin.settings.display.sealSuffix))
     }
 
+    /** 표시 칭호의 MiniMessage 원문. 이름표·탭리스트 줄 조립에 쓴다. */
+    fun titleMini(profile: PlayerProfile?): String =
+        profile?.displayTitle?.let { plugin.badges.get(BadgeType.TITLE, it) }?.displayName
+            ?: plugin.settings.title.noneDisplay
+
+    /** 장착 인장의 MiniMessage 원문. */
+    fun sealMini(profile: PlayerProfile?): String =
+        profile?.seal?.let { plugin.badges.get(BadgeType.SEAL, it) }?.displayName
+            ?: plugin.settings.sealNoneDisplay
+
     fun nicknameText(profile: PlayerProfile?, realName: String): String =
         profile?.nickname?.takeIf { it.isNotBlank() } ?: realName
 
@@ -63,34 +72,13 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
 
         if (settings.displayName) player.displayName(plate)
         if (settings.tab) player.playerListName(plate)
-        if (settings.nametag) applyNametag(player, profile)
+        // 머리 위 여러 줄 이름표는 display.NametagService 가 담당한다.
+        if (settings.nametag.enabled) plugin.nametags.refresh(player)
     }
 
     fun cleanup(player: Player) {
-        if (!plugin.settings.display.nametag) return
-        runCatching {
-            Bukkit.getScoreboardManager().mainScoreboard.getTeam(teamName(player))?.unregister()
-        }
+        plugin.nametags.handleQuit(player)
     }
-
-    private fun applyNametag(player: Player, profile: PlayerProfile?) {
-        runCatching {
-            val board = Bukkit.getScoreboardManager().mainScoreboard
-            val name = teamName(player)
-            val team = board.getTeam(name) ?: board.registerNewTeam(name)
-            team.prefix(
-                Component.empty()
-                    .append(sealComponent(profile))
-                    .append(titleComponent(profile)),
-            )
-            if (!team.hasEntry(player.name)) team.addEntry(player.name)
-        }.onFailure {
-            plugin.logger.warning("네임태그 적용 실패 (${player.name}): ${it.message}")
-        }
-    }
-
-    private fun teamName(player: Player): String =
-        "tf_" + player.uniqueId.toString().replace("-", "").substring(0, 12)
 
     // ── 채팅 (기본 꺼짐) ───────────────────────────────────────────────
 
