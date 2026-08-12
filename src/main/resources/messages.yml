@@ -105,7 +105,7 @@ gui:
   profile-title: '<dark_gray>내 정보 <gray>- <player>'
   admin-title: '<dark_gray><type> 관리 <gray>(<page>/<max>)'
   edit-title: '<dark_gray>편집: <id>'
-  stat-title: '<dark_gray>스텟 편집: <id>'
+  stat-title: '<dark_gray>스텟 편집: <id> <gray>(<page>/<max>)'
   confirm-title: '<dark_gray>정말 진행할까요?'
   rank-title: '<dark_gray><type> 수집 순위'
 
@@ -298,13 +298,16 @@ gui:
         - '<gray>값은 채팅으로 입력하며, 입력한 문장은'
         - '<gray>채팅에 표시되거나 기록되지 않습니다.'
     stat-legend:
-      name: '<white>표기 안내'
+      name: '<white>표기 안내 <gray>(<page>/<max> 페이지)'
       lore:
+        - '<gray>등록된 스텟 <white><total></white>종'
+        - ''
         - '<aqua>장착 스텟 <dark_gray>- 능력치 슬롯에 장착했을 때만 적용'
         - '<green>보유 스텟 <dark_gray>- 보유만 해도 항상 적용'
         - ''
-        - '<white>바닐라 <dark_gray>- 실제 Attribute 로 적용됩니다.'
-        - '<gray>커스텀 <dark_gray>- API/플레이스홀더로만 노출됩니다.'
+        - '<green>바닐라 <dark_gray>- 외부 플러그인 없이 항상 적용됩니다.'
+        - '<light_purple>MMOItems <dark_gray>- MythicLib 연동 시 적용됩니다.'
+        - '<gray>가상 <dark_gray>- API/플레이스홀더로만 노출됩니다.'
         - ''
         - '<gold>발광 <dark_gray>- 값이 설정된 스텟'
     delete:

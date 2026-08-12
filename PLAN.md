@@ -78,8 +78,8 @@ kr.inmc.titleforge
 │           BadgeRegistry.kt  메모리 레지스트리 (읽기 O(1))
 ├─ stat/    Stat.kt           스텟 1개 정의 (id 기준 동일성)
 │           StatRegistry.kt   바닐라 내장 + stats.yml 병합 레지스트리
-│           StatCategory.kt   전투/방어/이동/유틸리티
-│           StatLayout.kt     편집 GUI 슬롯 배치 (순수 로직)
+│           StatCategory.kt   전투/방어/이동/자원/상호작용/유틸리티
+│           StatLayout.kt     편집 GUI 슬롯 배치 + 페이지 (순수 로직)
 │           StatValueParser.kt 채팅 입력값 해석 (순수 로직)
 │           StatApplier.kt    AttributeModifier + MMOItems 적용/회수
 ├─ player/  PlayerProfile.kt  플레이어 상태 + 스텟 캐시
@@ -194,15 +194,18 @@ tf_owned(uuid, type, badge_id, obtained_at, expires_at, PRIMARY KEY(uuid, type, 
 
 ```
 행0  [뒤로]   ·  ·  ·  [편집 중 칭호 + 장착/보유 요약]  ·  ·  ·  [전체 초기화]
-행1  [전투]      공격력  공격속도  치명타확률  치명타피해
-행2  [방어]      최대체력  방어력  방어강도  넉백저항  흡수체력
-행3  [이동]      이동속도
-행4  [유틸리티]  행운  경험치보너스  드랍률보너스
-행5  [조작 방법]      ·      [표기 안내]      ·      [뒤로]
+행1  [분류]      스텟 최대 8개
+행2  [분류]      스텟 최대 8개
+행3  [분류]      스텟 최대 8개
+행4  [분류]      스텟 최대 8개
+행5  [조작 방법] · [이전] · [표기 안내] · [다음] · [뒤로]
 ```
 
 배치는 `stat/StatLayout.kt` 가 계산합니다. Bukkit 의존이 없는 순수 로직이라 단위 테스트로
-슬롯 충돌·범위 초과·누락을 검증하며, 스텟이 늘어나면 다음 행으로 자동으로 넘어갑니다.
+슬롯 충돌·범위 초과·누락·페이지 계산을 검증합니다.
+
+- 한 분류가 8개를 넘으면 다음 행으로 이어지고, 라벨에 `(계속)` 이 붙습니다.
+- 4행을 넘으면 **페이지**로 넘어갑니다. 기본 구성(63종)은 3페이지입니다.
 
 **각 아이콘 로어** — 관리자가 문서를 찾지 않아도 되도록 다음을 모두 표시합니다.
 
@@ -254,7 +257,12 @@ tf_owned(uuid, type, badge_id, obtained_at, expires_at, PRIMARY KEY(uuid, type, 
 
 ### MMOItems 스텟
 
-- 커스텀 스텟은 `stats.yml` 에서 MMOItems 스텟 ID 로 정의합니다(치명타 확률/피해, 마나, 쿨다운 감소 등).
+- MythicLib `SharedStat` 목록 **전체**를 반영했습니다. 바닐라 Attribute 로 처리되는 항목은
+  바닐라 스텟(28종, 코드 내장)으로, MythicLib 전용 항목은 `stats.yml`(34종)로 나눠
+  **중복 적용을 피했습니다.** 가상 스텟 예시까지 합쳐 기본 63종입니다.
+- 실제 API 는 `StatInstance#registerModifier(StatModifier)` / `removeIf(Predicate<String>)`,
+  `StatModifier(String key, String stat, double value)` 입니다.
+- 원소 스텟은 서버마다 원소 이름이 달라 기본 제공하지 않고 `stats.yml` 주석에 추가 방법을 남겼습니다.
 - 적용은 `hook/MythicLibHook.kt` 가 **리플렉션으로만** 수행합니다. MythicLib 이 없거나 시그니처가
   다르면 연동만 꺼지고 값은 계속 보관·노출됩니다.
 - **바닐라 스텟 9종은 코드에 내장되어 항상 동작합니다.** MMOItems 를 쓰지 않는 서버도

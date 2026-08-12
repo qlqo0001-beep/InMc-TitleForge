@@ -9,8 +9,9 @@ package kr.inmc.titleforge.stat
  * 배치 규칙
  * - 6줄(54칸) 고정. 0행은 헤더, 5행은 안내/이동 버튼.
  * - 1~4행이 분류 영역. 각 행의 첫 칸(열 0)은 분류 라벨, 열 1~8 에 스텟이 들어간다.
- * - 한 분류의 스텟이 8개를 넘으면 라벨 없이 다음 행으로 이어진다.
- * - 행이 모자라면 배치하지 못한 스텟을 [Layout.overflow] 로 돌려준다(경고 + 페이지 안내용).
+ * - 한 분류의 스텟이 8개를 넘으면 다음 행으로 이어지며, 이어진 행의 라벨은 "계속" 표시가 붙는다.
+ * - 행이 4줄을 넘으면 **페이지**로 넘어간다. MMOItems 스텟을 전부 켜면 60종이 넘으므로
+ *   페이지 없이는 담을 수 없다.
  */
 object StatLayout {
 
@@ -27,8 +28,11 @@ object StatLayout {
     /** 한 행에 들어갈 수 있는 스텟 수 (열 0 은 라벨). */
     const val MAX_PER_ROW = COLUMNS - 1
 
+    /** 한 페이지에 들어가는 행 수. */
+    val ROWS_PER_PAGE = CATEGORY_ROWS.size
+
     /** 한 페이지에 배치 가능한 최대 스텟 수. */
-    const val MAX_PER_PAGE = 4 * MAX_PER_ROW
+    val MAX_PER_PAGE = ROWS_PER_PAGE * MAX_PER_ROW
 
     // 헤더 슬롯
     const val SLOT_BACK = 0
@@ -42,60 +46,79 @@ object StatLayout {
     val SLOT_NEXT = FOOTER_ROW * COLUMNS + 6
     val SLOT_FOOTER_BACK = FOOTER_ROW * COLUMNS + 8
 
+    /** 한 행에 들어갈 내용. */
+    class RowSpec(
+        val category: StatCategory,
+        val stats: List<Stat>,
+        /** 같은 분류가 앞 행에서 이어진 행인지. */
+        val continuation: Boolean,
+    )
+
+    /** 라벨 칸에 그릴 내용. */
+    class Label(val category: StatCategory, val continuation: Boolean)
+
     class Layout(
-        /** 분류 → 라벨 슬롯 */
-        val categorySlots: Map<StatCategory, Int>,
+        val page: Int,
+        val pageCount: Int,
+        /** 라벨 슬롯 → 라벨 */
+        val labels: Map<Int, Label>,
         /** 스텟 → 아이콘 슬롯 */
         val statSlots: Map<Stat, Int>,
-        /** 자리가 없어 이 페이지에 배치하지 못한 스텟 */
-        val overflow: List<Stat>,
     ) {
         /** 슬롯 → 스텟 역방향 조회 (클릭 처리용). */
         val bySlot: Map<Int, Stat> = statSlots.entries.associate { (stat, slot) -> slot to stat }
+
+        val hasPrev: Boolean get() = page > 0
+        val hasNext: Boolean get() = page < pageCount - 1
     }
 
     /**
-     * @param statsOf 분류별 스텟 목록 (레지스트리에서 주입)
+     * 분류별 스텟을 행 단위로 쪼갠다. 페이지 계산의 기준이 된다.
      */
-    fun compute(
+    fun rows(
         categories: List<StatCategory> = StatCategory.entries,
         statsOf: (StatCategory) -> List<Stat>,
-    ): Layout {
-        val categorySlots = LinkedHashMap<StatCategory, Int>()
-        val statSlots = LinkedHashMap<Stat, Int>()
-        val overflow = ArrayList<Stat>()
-
-        val availableRows = ArrayDeque(CATEGORY_ROWS)
-
+    ): List<RowSpec> {
+        val result = ArrayList<RowSpec>()
         for (category in categories) {
             val stats = statsOf(category)
             if (stats.isEmpty()) continue
-
-            val row = availableRows.removeFirstOrNull()
-            if (row == null) {
-                overflow += stats
-                continue
+            stats.chunked(MAX_PER_ROW).forEachIndexed { index, chunk ->
+                result += RowSpec(category, chunk, continuation = index > 0)
             }
-            categorySlots[category] = row * COLUMNS
+        }
+        return result
+    }
 
-            var index = 0
-            var currentRow = row
-            for (stat in stats) {
-                if (index == MAX_PER_ROW) {
-                    // 8개를 넘으면 라벨 없이 다음 행으로 이어붙인다.
-                    val nextRow = availableRows.removeFirstOrNull()
-                    if (nextRow == null) {
-                        overflow += stat
-                        continue
-                    }
-                    currentRow = nextRow
-                    index = 0
-                }
-                statSlots[stat] = currentRow * COLUMNS + 1 + index
-                index++
+    fun pageCount(rowCount: Int): Int =
+        if (rowCount == 0) 1 else (rowCount + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE
+
+    /**
+     * @param page 0부터. 범위를 벗어나면 가장 가까운 페이지로 보정한다.
+     */
+    fun compute(
+        page: Int = 0,
+        categories: List<StatCategory> = StatCategory.entries,
+        statsOf: (StatCategory) -> List<Stat>,
+    ): Layout {
+        val allRows = rows(categories, statsOf)
+        val pageCount = pageCount(allRows.size)
+        val current = page.coerceIn(0, pageCount - 1)
+
+        val labels = LinkedHashMap<Int, Label>()
+        val statSlots = LinkedHashMap<Stat, Int>()
+
+        val from = current * ROWS_PER_PAGE
+        val slice = allRows.drop(from).take(ROWS_PER_PAGE)
+
+        slice.forEachIndexed { index, row ->
+            val guiRow = CATEGORY_ROWS[index]
+            labels[guiRow * COLUMNS] = Label(row.category, row.continuation)
+            row.stats.forEachIndexed { column, stat ->
+                statSlots[stat] = guiRow * COLUMNS + 1 + column
             }
         }
 
-        return Layout(categorySlots, statSlots, overflow)
+        return Layout(current, pageCount, labels, statSlots)
     }
 }

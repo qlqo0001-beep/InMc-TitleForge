@@ -204,6 +204,7 @@ object Gui {
         category: StatCategory,
         equipStats: Map<String, Double>,
         ownStats: Map<String, Double>,
+        continuation: Boolean = false,
     ): ItemStack {
         val stats = plugin.stats.byCategory(category)
         val configured = stats.count { (equipStats[it.id] ?: 0.0) != 0.0 || (ownStats[it.id] ?: 0.0) != 0.0 }
@@ -224,11 +225,12 @@ object Gui {
                 "own" to stat.format(own),
             )
         }
-        return Items.of(
-            category.icon,
-            Text.mini("${category.color}<bold><name></bold>", "name" to category.display),
-            lore,
-        )
+        val name = if (continuation) {
+            Text.mini("${category.color}<bold><name></bold> <gray>(계속)", "name" to category.display)
+        } else {
+            Text.mini("${category.color}<bold><name></bold>", "name" to category.display)
+        }
+        return Items.of(category.icon, name, lore)
     }
 
     /**

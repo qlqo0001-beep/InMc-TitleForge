@@ -16,6 +16,8 @@ enum class StatCategory(
     COMBAT("combat", "전투", Material.IRON_SWORD, "<red>"),
     DEFENSE("defense", "방어", Material.SHIELD, "<blue>"),
     MOBILITY("mobility", "이동", Material.FEATHER, "<aqua>"),
+    RESOURCE("resource", "자원", Material.LAPIS_LAZULI, "<dark_aqua>"),
+    WORLD("world", "상호작용", Material.IRON_PICKAXE, "<gold>"),
     UTILITY("utility", "유틸리티", Material.EXPERIENCE_BOTTLE, "<green>"),
     ;
 

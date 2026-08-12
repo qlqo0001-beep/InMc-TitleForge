@@ -1,46 +1,50 @@
 # ══════════════════════════════════════════════════════════════
 #  스텟 정의
 #
-#  ▸ 바닐라 스텟 9종(최대 체력 · 공격력 · 공격 속도 · 방어력 · 방어 강도 ·
-#    넉백 저항 · 흡수 체력 · 이동 속도 · 행운)은 플러그인에 내장되어 있습니다.
+#  ▸ 바닐라 스텟 28종은 플러그인에 내장되어 있습니다.
+#    (공격력 · 공격속도 · 공격넉백 · 휩쓸기피해 · 최대체력 · 방어력 · 방어강도 ·
+#     넉백저항 · 흡수체력 · 폭발넉백저항 · 낙하피해배율 · 화상지속 · 이동속도 ·
+#     점프력 · 안전낙하거리 · 중력 · 계단높이 · 웅크리기속도 · 지형이동효율 ·
+#     수중이동효율 · 크기 · 채굴속도 · 채굴효율 · 수중채굴속도 · 블록도달거리 ·
+#     개체도달거리 · 산소보너스 · 행운)
 #    이 파일이 비어 있어도, MMOItems 가 없어도 **항상 그대로 동작**합니다.
-#    아래처럼 같은 id 로 적으면 설명·아이콘·권장 범위만 덮어쓸 수 있습니다.
+#    같은 id 로 적으면 설명·아이콘·권장 범위만 덮어쓸 수 있습니다.
 #
-#  ▸ 아래 MMOItems 스텟은 MythicLib(MMOItems) 가 설치된 경우에만 실제로 적용됩니다.
-#    없으면 값은 보관되고 API·플레이스홀더로만 노출되며, GUI 에는 "미연동" 으로 표시됩니다.
-#    쓰지 않는 스텟은 통째로 지워도 됩니다.
+#  ▸ 아래는 MythicLib(MMOItems) 가 제공하는 스텟 전체입니다.
+#    MMOItems 의 SharedStat 목록을 그대로 옮겼으며, 바닐라 Attribute 로 이미 처리되는
+#    항목은 위 내장 목록에 있으므로 중복 적용을 피하기 위해 여기서 제외했습니다.
+#    MythicLib 이 없으면 값은 보관되고 API·플레이스홀더로만 노출되며,
+#    GUI 에는 "미연동" 으로 표시됩니다. 쓰지 않는 스텟은 통째로 지워도 됩니다.
 #
 #  필드
 #    kind         : vanilla | mmo | virtual   (virtual = 값만 보관)
-#    category     : combat | defense | mobility | utility
+#    category     : combat | defense | mobility | resource | world | utility
 #    display      : GUI 에 보일 이름
 #    description  : 설명 로어 (여러 줄 가능)
 #    icon         : GUI 아이콘 Material
 #    attribute    : kind=vanilla 일 때 바닐라 Attribute 키
 #    mmo-stat     : kind=mmo 일 때 MMOItems 스텟 ID
 #    operation    : ADD_NUMBER | ADD_SCALAR | MULTIPLY_SCALAR_1  (바닐라 전용)
-#    display-scale: 표시 배율. 내부 0.1 을 10% 로 보이려면 100
-#    suffix       : 표시 단위 문자열 (예: %)
+#    display-scale: 표시 배율. 내부 0.1 을 10%% 로 보이려면 100
+#    suffix       : 표시 단위 문자열 (예: %%)
 #    decimals     : 소수점 자리수
 #    base         : 플레이어 기본값 안내용
 #    soft-min/max : 권장 입력 범위 (표시 단위). 벗어나면 경고만 하고 적용은 됩니다.
 #    order        : 클수록 앞에 배치
 # ══════════════════════════════════════════════════════════════
 
-# ── MMOItems 전투 스텟 ──────────────────────────────────────────
 critical_strike_chance:
   kind: mmo
   mmo-stat: CRITICAL_STRIKE_CHANCE
   category: combat
   display: '치명타 확률'
   description:
-    - '공격이 치명타로 터질 확률입니다.'
-    - '치명타는 추가 피해를 줍니다.'
+    - '근접 공격이 치명타로 터질 확률입니다.'
   icon: QUARTZ
   suffix: '%'
   soft-min: -100.0
   soft-max: 100.0
-  order: 80
+  order: 100
 
 critical_strike_power:
   kind: mmo
@@ -53,46 +57,202 @@ critical_strike_power:
   suffix: '%'
   soft-min: -100.0
   soft-max: 500.0
-  order: 70
+  order: 99
 
-attack_damage_mmo:
+spell_critical_strike_chance:
   kind: mmo
-  mmo-stat: ATTACK_DAMAGE
+  mmo-stat: SPELL_CRITICAL_STRIKE_CHANCE
   category: combat
-  display: 'MMO 공격력'
+  display: '주문 치명타 확률'
   description:
-    - 'MMOItems 무기 피해량에 더해집니다.'
-    - '바닐라 공격력과 별개로 계산됩니다.'
-  icon: NETHERITE_SWORD
-  soft-min: -50.0
-  soft-max: 50.0
-  order: 60
+    - '스킬·주문이 치명타로 터질 확률입니다.'
+  icon: AMETHYST_SHARD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 98
 
-magic_damage:
+spell_critical_strike_power:
   kind: mmo
-  mmo-stat: MAGIC_DAMAGE
+  mmo-stat: SPELL_CRITICAL_STRIKE_POWER
+  category: combat
+  display: '주문 치명타 피해'
+  description:
+    - '주문 치명타의 추가 피해 배율입니다.'
+  icon: AMETHYST_CLUSTER
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 500.0
+  order: 97
+
+weapon_damage:
+  kind: mmo
+  mmo-stat: WEAPON_DAMAGE
+  category: combat
+  display: '무기 피해'
+  description:
+    - '무기로 주는 모든 피해가 증가합니다.'
+  icon: NETHERITE_SWORD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 96
+
+physical_damage:
+  kind: mmo
+  mmo-stat: PHYSICAL_DAMAGE
+  category: combat
+  display: '물리 피해'
+  description:
+    - '물리 계열 피해가 증가합니다.'
+  icon: IRON_AXE
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 95
+
+magical_damage:
+  kind: mmo
+  mmo-stat: MAGICAL_DAMAGE
   category: combat
   display: '마법 피해'
   description:
-    - '마법 계열 스킬의 피해량이 늘어납니다.'
+    - '마법 계열 피해가 증가합니다.'
   icon: BLAZE_ROD
   suffix: '%'
   soft-min: -100.0
   soft-max: 300.0
-  order: 50
+  order: 94
 
-# ── MMOItems 방어 스텟 ──────────────────────────────────────────
-defense:
+projectile_damage:
   kind: mmo
-  mmo-stat: DEFENSE
-  category: defense
-  display: 'MMO 방어도'
+  mmo-stat: PROJECTILE_DAMAGE
+  category: combat
+  display: '투사체 피해'
   description:
-    - 'MMOItems 피해 계산에서 받는 피해를 줄입니다.'
-  icon: SHIELD
-  soft-min: -50.0
+    - '화살 등 투사체 피해가 증가합니다.'
+  icon: ARROW
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 93
+
+skill_damage:
+  kind: mmo
+  mmo-stat: SKILL_DAMAGE
+  category: combat
+  display: '스킬 피해'
+  description:
+    - '스킬로 주는 피해가 증가합니다.'
+  icon: ENCHANTED_BOOK
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 92
+
+pve_damage:
+  kind: mmo
+  mmo-stat: PVE_DAMAGE
+  category: combat
+  display: 'PvE 피해'
+  description:
+    - '몬스터에게 주는 피해가 증가합니다.'
+  icon: ZOMBIE_HEAD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 91
+
+pvp_damage:
+  kind: mmo
+  mmo-stat: PVP_DAMAGE
+  category: combat
+  display: 'PvP 피해'
+  description:
+    - '다른 플레이어에게 주는 피해가 증가합니다.'
+  icon: PLAYER_HEAD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 90
+
+undead_damage:
+  kind: mmo
+  mmo-stat: UNDEAD_DAMAGE
+  category: combat
+  display: '언데드 피해'
+  description:
+    - '언데드 몹에게 주는 피해가 증가합니다.'
+  icon: ROTTEN_FLESH
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 300.0
+  order: 89
+
+lifesteal:
+  kind: mmo
+  mmo-stat: LIFESTEAL
+  category: combat
+  display: '생명력 흡수'
+  description:
+    - '가한 피해의 일부만큼 체력을 회복합니다.'
+  icon: REDSTONE
+  suffix: '%'
+  soft-min: -100.0
   soft-max: 100.0
-  order: 50
+  order: 88
+
+spell_vampirism:
+  kind: mmo
+  mmo-stat: SPELL_VAMPIRISM
+  category: combat
+  display: '주문 흡혈'
+  description:
+    - '스킬 피해의 일부만큼 체력을 회복합니다.'
+  icon: GHAST_TEAR
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 87
+
+damage_reduction:
+  kind: mmo
+  mmo-stat: DAMAGE_REDUCTION
+  category: defense
+  display: '피해 감소'
+  description:
+    - '받는 모든 피해를 비율로 줄입니다.'
+  icon: SHIELD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 90.0
+  order: 100
+
+pve_defense:
+  kind: mmo
+  mmo-stat: PVE_DEFENSE
+  category: defense
+  display: 'PvE 방어'
+  description:
+    - '몬스터에게 받는 피해를 줄입니다.'
+  icon: IRON_HELMET
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 90.0
+  order: 99
+
+pvp_defense:
+  kind: mmo
+  mmo-stat: PVP_DEFENSE
+  category: defense
+  display: 'PvP 방어'
+  description:
+    - '다른 플레이어에게 받는 피해를 줄입니다.'
+  icon: DIAMOND_HELMET
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 90.0
+  order: 98
 
 health_regeneration:
   kind: mmo
@@ -105,34 +265,189 @@ health_regeneration:
   decimals: 2
   soft-min: -10.0
   soft-max: 20.0
-  order: 40
+  order: 97
 
-# ── MMOItems 유틸리티 스텟 ──────────────────────────────────────
+block_power:
+  kind: mmo
+  mmo-stat: BLOCK_POWER
+  category: defense
+  display: '막기 위력'
+  description:
+    - '막기에 성공했을 때 줄어드는 피해 비율입니다.'
+  icon: SHIELD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 96
+
+block_rating:
+  kind: mmo
+  mmo-stat: BLOCK_RATING
+  category: defense
+  display: '막기 확률'
+  description:
+    - '공격을 막아낼 확률입니다.'
+  icon: IRON_DOOR
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 95
+
+block_cooldown_reduction:
+  kind: mmo
+  mmo-stat: BLOCK_COOLDOWN_REDUCTION
+  category: defense
+  display: '막기 쿨감'
+  description:
+    - '막기 재사용 대기시간이 줄어듭니다.'
+  icon: CLOCK
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 94
+
+dodge_rating:
+  kind: mmo
+  mmo-stat: DODGE_RATING
+  category: defense
+  display: '회피 확률'
+  description:
+    - '공격을 완전히 피할 확률입니다.'
+  icon: PHANTOM_MEMBRANE
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 93
+
+dodge_cooldown_reduction:
+  kind: mmo
+  mmo-stat: DODGE_COOLDOWN_REDUCTION
+  category: defense
+  display: '회피 쿨감'
+  description:
+    - '회피 재사용 대기시간이 줄어듭니다.'
+  icon: CLOCK
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 92
+
+parry_rating:
+  kind: mmo
+  mmo-stat: PARRY_RATING
+  category: defense
+  display: '패링 확률'
+  description:
+    - '공격을 받아넘길 확률입니다.'
+  icon: NETHERITE_SWORD
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 91
+
+parry_cooldown_reduction:
+  kind: mmo
+  mmo-stat: PARRY_COOLDOWN_REDUCTION
+  category: defense
+  display: '패링 쿨감'
+  description:
+    - '패링 재사용 대기시간이 줄어듭니다.'
+  icon: CLOCK
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 90
+
+speed_malus_reduction:
+  kind: mmo
+  mmo-stat: SPEED_MALUS_REDUCTION
+  category: mobility
+  display: '감속 저항'
+  description:
+    - '무거운 장비 등으로 인한 이동 속도 감소를 줄입니다.'
+  icon: SUGAR
+  suffix: '%'
+  soft-min: -100.0
+  soft-max: 100.0
+  order: 100
+
 max_mana:
   kind: mmo
   mmo-stat: MAX_MANA
-  category: utility
+  category: resource
   display: '최대 마나'
   description:
     - '보유할 수 있는 마나 총량입니다.'
   icon: LAPIS_LAZULI
   decimals: 0
   soft-min: -100.0
-  soft-max: 500.0
-  order: 90
+  soft-max: 1000.0
+  order: 100
 
 mana_regeneration:
   kind: mmo
   mmo-stat: MANA_REGENERATION
-  category: utility
+  category: resource
   display: '마나 재생'
   description:
     - '시간당 회복되는 마나량입니다.'
   icon: LAPIS_BLOCK
   decimals: 2
   soft-min: -10.0
-  soft-max: 20.0
-  order: 80
+  soft-max: 50.0
+  order: 99
+
+max_stamina:
+  kind: mmo
+  mmo-stat: MAX_STAMINA
+  category: resource
+  display: '최대 스태미나'
+  description:
+    - '보유할 수 있는 스태미나 총량입니다.'
+  icon: SUGAR
+  decimals: 0
+  soft-min: -100.0
+  soft-max: 1000.0
+  order: 98
+
+stamina_regeneration:
+  kind: mmo
+  mmo-stat: STAMINA_REGENERATION
+  category: resource
+  display: '스태미나 재생'
+  description:
+    - '시간당 회복되는 스태미나량입니다.'
+  icon: SUGAR_CANE
+  decimals: 2
+  soft-min: -10.0
+  soft-max: 50.0
+  order: 97
+
+max_stellium:
+  kind: mmo
+  mmo-stat: MAX_STELLIUM
+  category: resource
+  display: '최대 스텔륨'
+  description:
+    - '보유할 수 있는 스텔륨 총량입니다.'
+  icon: NETHER_STAR
+  decimals: 0
+  soft-min: -100.0
+  soft-max: 1000.0
+  order: 96
+
+stellium_regeneration:
+  kind: mmo
+  mmo-stat: STELLIUM_REGENERATION
+  category: resource
+  display: '스텔륨 재생'
+  description:
+    - '시간당 회복되는 스텔륨량입니다.'
+  icon: END_CRYSTAL
+  decimals: 2
+  soft-min: -10.0
+  soft-max: 50.0
+  order: 95
 
 cooldown_reduction:
   kind: mmo
@@ -145,7 +460,7 @@ cooldown_reduction:
   suffix: '%'
   soft-min: -50.0
   soft-max: 80.0
-  order: 70
+  order: 99
 
 additional_experience:
   kind: mmo
@@ -158,7 +473,7 @@ additional_experience:
   suffix: '%'
   soft-min: -100.0
   soft-max: 500.0
-  order: 60
+  order: 98
 
 # ── 가상 스텟 예시 ──────────────────────────────────────────────
 # 어떤 플러그인에도 적용되지 않고 값만 보관합니다.
@@ -175,6 +490,26 @@ drop_bonus:
   soft-min: -100.0
   soft-max: 500.0
   order: 10
+
+# ── 원소 스텟 (MMOItems Elements) ───────────────────────────────
+# 원소는 서버마다 이름이 달라 기본 제공하지 않습니다.
+# MMOItems 의 elements.yml 에 정의한 원소 이름으로 아래처럼 추가하세요.
+#
+# fire_damage:
+#   kind: mmo
+#   mmo-stat: FIRE_DAMAGE        # <원소>_DAMAGE
+#   category: combat
+#   display: '화염 피해'
+#   icon: BLAZE_POWDER
+#   suffix: '%'
+#
+# fire_defense:
+#   kind: mmo
+#   mmo-stat: DEFENSE_FIRE       # DEFENSE_<원소>
+#   category: defense
+#   display: '화염 저항'
+#   icon: MAGMA_CREAM
+#   suffix: '%'
 
 # ── 바닐라 스텟 덮어쓰기 예시 ───────────────────────────────────
 # 내장 정의를 지우지 않고 설명·아이콘만 바꿉니다.

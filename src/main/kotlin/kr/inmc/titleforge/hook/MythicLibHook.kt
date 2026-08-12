@@ -4,10 +4,17 @@ import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.lang.reflect.Method
 import java.util.UUID
+import java.util.function.Predicate
 import java.util.logging.Logger
 
 /**
  * MMOItems(MythicLib) 스텟 연동.
+ *
+ * 실제 API (MythicLib `io.lumine.mythic.lib.api.stat`):
+ * - `MMOPlayerData.get(uuid).getStatMap().getInstance(statId)` → `StatInstance`
+ * - `StatInstance#registerModifier(StatModifier)` 로 부착
+ * - `StatInstance#removeIf(Predicate<String>)` 로 키 기준 회수
+ * - `StatModifier(String key, String stat, double value)`
  *
  * **전부 리플렉션으로 호출한다.** MythicLib 을 컴파일 의존성으로 잡지 않으므로
  * 해당 플러그인이 없거나 버전이 달라도 빌드·구동에 영향이 없고, 연동에 실패하면
@@ -23,8 +30,8 @@ class MythicLibHook private constructor(
     private val getStatMap: Method,
     private val getInstance: Method,
     private val statModifierCtor: java.lang.reflect.Constructor<*>,
-    private val addModifier: Method,
-    private val removeModifier: Method,
+    private val registerModifier: Method,
+    private val removeIf: Method,
 ) {
 
     @Volatile
@@ -44,13 +51,13 @@ class MythicLibHook private constructor(
             // 우리 키로 붙인 것만 회수한 뒤 다시 부착한다.
             for (statId in knownStats) {
                 val instance = getInstance.invoke(statMap, statId) ?: continue
-                runCatching { removeModifier.invoke(instance, MODIFIER_KEY) }
+                runCatching { removeIf.invoke(instance, ownModifiers) }
             }
             for ((statId, value) in values) {
                 if (value == 0.0) continue
                 val instance = getInstance.invoke(statMap, statId) ?: continue
                 val modifier = statModifierCtor.newInstance(MODIFIER_KEY, statId, value)
-                addModifier.invoke(instance, modifier)
+                registerModifier.invoke(instance, modifier)
             }
         }.onFailure { error ->
             broken = true
@@ -64,13 +71,16 @@ class MythicLibHook private constructor(
             val statMap = statMapOf(player.uniqueId) ?: return
             for (statId in knownStats) {
                 val instance = getInstance.invoke(statMap, statId) ?: continue
-                runCatching { removeModifier.invoke(instance, MODIFIER_KEY) }
+                runCatching { removeIf.invoke(instance, ownModifiers) }
             }
         }.onFailure {
             broken = true
             logger.warning("MMOItems 스텟 회수에 실패해 연동을 비활성화합니다: ${it.message}")
         }
     }
+
+    /** `StatInstance#removeIf(Predicate<String>)` 에 넘길 조건. 우리 키만 지운다. */
+    private val ownModifiers = Predicate<String> { key -> key == MODIFIER_KEY }
 
     private fun statMapOf(uuid: UUID): Any? {
         val data = playerDataGet.invoke(null, uuid) ?: return null
@@ -124,15 +134,19 @@ class MythicLibHook private constructor(
                         ctor.parameterTypes[2] == java.lang.Double.TYPE
                 } ?: error("StatModifier(String, String, double) 생성자를 찾지 못했습니다")
 
-                val addModifier = statInstanceClass.methods.firstOrNull {
-                    (it.name == "addModifier" || it.name == "registerModifier") && it.parameterCount == 1
+                // StatInstance#registerModifier(StatModifier)
+                val registerModifier = statInstanceClass.methods.firstOrNull {
+                    (it.name == "registerModifier" || it.name == "addModifier") &&
+                        it.parameterCount == 1 &&
+                        it.parameterTypes[0].isAssignableFrom(statModifierClass)
                 } ?: error("스텟 모디파이어 등록 메서드를 찾지 못했습니다")
 
-                val removeModifier = statInstanceClass.methods.firstOrNull {
-                    it.name == "remove" && it.parameterCount == 1 && it.parameterTypes[0] == String::class.java
-                } ?: statInstanceClass.methods.firstOrNull {
-                    it.name == "removeModifier" && it.parameterCount == 1
-                } ?: error("스텟 모디파이어 회수 메서드를 찾지 못했습니다")
+                // StatInstance#removeIf(Predicate<String>) — 키 기준 일괄 회수
+                val removeIf = statInstanceClass.methods.firstOrNull {
+                    it.name == "removeIf" &&
+                        it.parameterCount == 1 &&
+                        it.parameterTypes[0] == Predicate::class.java
+                } ?: error("스텟 모디파이어 회수 메서드(removeIf)를 찾지 못했습니다")
 
                 MythicLibHook(
                     logger = logger,
@@ -140,8 +154,8 @@ class MythicLibHook private constructor(
                     getStatMap = getStatMap,
                     getInstance = getInstance,
                     statModifierCtor = statModifierCtor,
-                    addModifier = addModifier,
-                    removeModifier = removeModifier,
+                    registerModifier = registerModifier,
+                    removeIf = removeIf,
                 )
             }.getOrElse { error ->
                 logger.warning(

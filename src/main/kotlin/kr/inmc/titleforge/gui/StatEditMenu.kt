@@ -28,13 +28,22 @@ class StatEditMenu(
     private val badgeId: String,
 ) : Menu(plugin, viewer, rows = StatLayout.ROWS) {
 
-    private val layout = StatLayout.compute { plugin.stats.byCategory(it) }
+    private var page = 0
+
+    private fun layout() = StatLayout.compute(page) { plugin.stats.byCategory(it) }
 
     /** 항상 레지스트리에서 최신 정의를 읽는다. 동시에 편집해도 옛 값으로 덮어쓰지 않는다. */
     private fun badge(): Badge? = plugin.badges.get(BadgeType.TITLE, badgeId)
 
-    override fun title(): Component =
-        plugin.messages.component("gui.stat-title", "id" to badgeId)
+    override fun title(): Component {
+        val layout = layout()
+        return plugin.messages.component(
+            "gui.stat-title",
+            "id" to badgeId,
+            "page" to (layout.page + 1),
+            "max" to layout.pageCount,
+        )
+    }
 
     override fun render() {
         if (!viewer.hasPermission("titleforge.admin")) {
@@ -48,17 +57,13 @@ class StatEditMenu(
             return
         }
 
-        renderHeader(badge)
-        renderCategories(badge)
-        renderFooter(badge)
-        fill()
+        val layout = layout()
+        page = layout.page
 
-        if (layout.overflow.isNotEmpty()) {
-            plugin.logger.warning(
-                "[GUI] 스텟 편집 창에 자리가 부족합니다. 배치되지 않은 스텟: " +
-                    layout.overflow.joinToString(", ") { it.id },
-            )
-        }
+        renderHeader(badge)
+        renderCategories(badge, layout)
+        renderFooter(badge, layout)
+        fill()
     }
 
     private fun renderHeader(badge: Badge) {
@@ -98,9 +103,12 @@ class StatEditMenu(
         }
     }
 
-    private fun renderCategories(badge: Badge) {
-        for ((category, slot) in layout.categorySlots) {
-            button(slot, Gui.categoryLabel(plugin, category, badge.equipStats, badge.ownStats))
+    private fun renderCategories(badge: Badge, layout: StatLayout.Layout) {
+        for ((slot, label) in layout.labels) {
+            button(
+                slot,
+                Gui.categoryLabel(plugin, label.category, badge.equipStats, badge.ownStats, label.continuation),
+            )
         }
 
         for ((stat, slot) in layout.statSlots) {
@@ -112,9 +120,33 @@ class StatEditMenu(
         }
     }
 
-    private fun renderFooter(badge: Badge) {
+    private fun renderFooter(badge: Badge, layout: StatLayout.Layout) {
         button(StatLayout.SLOT_HELP, Gui.item(plugin, "gui.button.stat-help", Material.BOOK))
-        button(StatLayout.SLOT_LEGEND, Gui.item(plugin, "gui.button.stat-legend", Material.PAPER))
+        button(
+            StatLayout.SLOT_LEGEND,
+            Gui.item(
+                plugin, "gui.button.stat-legend", Material.PAPER,
+                placeholders = arrayOf(
+                    "page" to (layout.page + 1),
+                    "max" to layout.pageCount,
+                    "total" to plugin.stats.size(),
+                ),
+            ),
+        )
+
+        if (layout.hasPrev) {
+            button(StatLayout.SLOT_PREV, Gui.item(plugin, "gui.button.prev", Material.ARROW)) {
+                page--
+                openLater()
+            }
+        }
+        if (layout.hasNext) {
+            button(StatLayout.SLOT_NEXT, Gui.item(plugin, "gui.button.next", Material.ARROW)) {
+                page++
+                openLater()
+            }
+        }
+
         button(StatLayout.SLOT_FOOTER_BACK, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
             BadgeEditMenu(plugin, viewer, badge).openLater()
         }

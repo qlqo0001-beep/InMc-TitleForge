@@ -134,7 +134,9 @@ MAX_PER_ROW = COLUMNS - 1
 HEADER_SLOTS = {0: "back", 4: "summary", 8: "reset-all"}
 FOOTER_SLOTS = {
     FOOTER_ROW * COLUMNS: "help",
+    FOOTER_ROW * COLUMNS + 2: "prev",
     FOOTER_ROW * COLUMNS + 4: "legend",
+    FOOTER_ROW * COLUMNS + 6: "next",
     FOOTER_ROW * COLUMNS + 8: "back",
 }
 
@@ -186,72 +188,70 @@ def parse_categories() -> list[str]:
 
 
 def check_layout() -> None:
+    """StatLayout.kt 와 동일한 규칙으로 페이지 배치를 시뮬레이션한다."""
     stats = parse_stats()
     categories = parse_categories()
     if not stats or not categories:
-        fail("StatType / StatCategory 파싱 실패")
+        fail("StatRegistry / StatCategory 파싱 실패")
         return
 
-    grouped = {category: [s for s, c in stats if c == category] for category in categories}
     unknown = {c for _, c in stats} - set(categories)
     if unknown:
         fail(f"StatCategory 에 없는 분류를 참조하는 스텟이 있습니다: {unknown}")
+        return
 
-    occupied: dict[int, str] = {}
-    for slot, name in {**HEADER_SLOTS, **FOOTER_SLOTS}.items():
-        occupied[slot] = f"chrome:{name}"
+    grouped = {c: [s for s, cat in stats if cat == c] for c in categories}
 
-    available = list(CATEGORY_ROWS)
-    placed: dict[str, int] = {}
-    overflow: list[str] = []
-
+    # 1) 분류별로 8개씩 끊어 행을 만든다.
+    rows = []
     for category in categories:
         members = grouped.get(category, [])
-        if not members:
-            continue
-        if not available:
-            overflow.extend(members)
-            continue
-        row = available.pop(0)
-        label_slot = row * COLUMNS
-        if label_slot in occupied:
-            fail(f"슬롯 충돌: {label_slot} ({occupied[label_slot]} vs label:{category})")
-        occupied[label_slot] = f"label:{category}"
+        for index in range(0, len(members), MAX_PER_ROW):
+            rows.append((category, members[index:index + MAX_PER_ROW], index > 0))
 
-        index, current_row = 0, row
-        for stat in members:
-            if index == MAX_PER_ROW:
-                if not available:
-                    overflow.append(stat)
-                    continue
-                current_row = available.pop(0)
-                index = 0
-            slot = current_row * COLUMNS + 1 + index
-            if slot in occupied:
-                fail(f"슬롯 충돌: {slot} ({occupied[slot]} vs stat:{stat})")
-            if not (0 <= slot < SIZE):
-                fail(f"슬롯 범위 초과: {slot} (stat:{stat})")
-            occupied[slot] = f"stat:{stat}"
-            placed[stat] = slot
-            index += 1
+    rows_per_page = len(CATEGORY_ROWS)
+    page_count = max(1, (len(rows) + rows_per_page - 1) // rows_per_page)
 
-    if overflow:
-        fail(f"배치되지 못한 스텟: {overflow}")
+    chrome = set(HEADER_SLOTS) | set(FOOTER_SLOTS)
+    placed = {}
+
+    for page in range(page_count):
+        occupied = dict.fromkeys(chrome, "chrome")
+        slice_rows = rows[page * rows_per_page:(page + 1) * rows_per_page]
+        print(f"  ── {page + 1}/{page_count} 페이지 ──")
+        grid = {}
+        for index, (category, members, continuation) in enumerate(slice_rows):
+            gui_row = CATEGORY_ROWS[index]
+            label_slot = gui_row * COLUMNS
+            if label_slot in occupied:
+                fail(f"슬롯 충돌: {label_slot} (label:{category})")
+            occupied[label_slot] = f"label:{category}"
+            grid[label_slot] = category + ("+" if continuation else "")
+            for column, stat in enumerate(members):
+                slot = gui_row * COLUMNS + 1 + column
+                if slot in occupied:
+                    fail(f"슬롯 충돌: {slot} (stat:{stat} vs {occupied[slot]})")
+                if not (0 <= slot < SIZE):
+                    fail(f"슬롯 범위 초과: {slot} (stat:{stat})")
+                occupied[slot] = f"stat:{stat}"
+                grid[slot] = stat
+                if stat in placed:
+                    fail(f"스텟이 두 번 배치되었습니다: {stat}")
+                placed[stat] = (page, slot)
+
+        for row in range(ROWS):
+            cells = []
+            for column in range(COLUMNS):
+                slot = row * COLUMNS + column
+                text = grid.get(slot) or ({**HEADER_SLOTS, **FOOTER_SLOTS}.get(slot, "")) or "·"
+                cells.append(text[:13].ljust(13))
+            print("   |" + "|".join(cells) + "|")
 
     missing = [s for s, _ in stats if s not in placed]
     if missing:
-        fail(f"배치 누락 스텟: {missing}")
+        fail(f"어느 페이지에도 배치되지 않은 스텟: {missing}")
 
-    if len(placed) != len(set(placed.values())):
-        fail("스텟이 같은 슬롯에 중복 배치되었습니다.")
-
-    print(f"  스텟 {len(stats)}개 / 분류 {len(categories)}개 배치 확인")
-    for row in range(ROWS):
-        cells = []
-        for column in range(COLUMNS):
-            entry = occupied.get(row * COLUMNS + column, "")
-            cells.append(entry.split(":", 1)[-1][:14].ljust(14) if entry else "·".ljust(14))
-        print("   |" + "|".join(cells) + "|")
+    print(f"  스텟 {len(stats)}개 / 분류 {len(categories)}개 / {page_count}페이지 배치 확인")
 
 
 # ── 5. 메뉴 슬롯 하드코딩 범위 검사 ────────────────────────────────────────
