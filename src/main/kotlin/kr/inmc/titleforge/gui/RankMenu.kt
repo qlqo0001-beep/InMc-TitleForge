@@ -1,0 +1,150 @@
+package kr.inmc.titleforge.gui
+
+import kr.inmc.titleforge.TitleForgePlugin
+import kr.inmc.titleforge.badge.BadgeType
+import kr.inmc.titleforge.rank.RankService
+import kr.inmc.titleforge.storage.RankEntry
+import kr.inmc.titleforge.util.Items
+import kr.inmc.titleforge.util.Text
+import net.kyori.adventure.text.Component
+import org.bukkit.Material
+import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
+
+/** 칭호·인장 수집 개수 순위. */
+class RankMenu(
+    plugin: TitleForgePlugin,
+    viewer: Player,
+    private var type: BadgeType,
+) : Menu(plugin, viewer, rows = 6) {
+
+    private var snapshot: RankService.Snapshot? = null
+    private var mine: RankEntry? = null
+
+    /**
+     * 순위 줄 아이콘 캐시.
+     *
+     * 최대 45개의 머리 아이템을 만드는 비용이 적지 않아, 같은 스냅샷을 다시 그릴 때는
+     * 재사용한다. 스냅샷이 바뀌면 [rebuildIcons] 가 통째로 다시 만든다.
+     */
+    private var icons: List<ItemStack> = emptyList()
+
+    private var iconsFor: RankService.Snapshot? = null
+
+    override fun title(): Component =
+        plugin.messages.component("gui.rank-title", "type" to type.display)
+
+    override fun render() {
+        val current = snapshot
+        if (current == null) {
+            renderLoading()
+            requestData()
+            return
+        }
+
+        rebuildIcons(current)
+        icons.forEachIndexed { index, icon -> button(index, icon) }
+
+        val navRow = size - 9
+        button(
+            navRow + 2,
+            Gui.item(
+                plugin, "gui.button.rank-toggle", Material.COMPARATOR,
+                placeholders = arrayOf("type" to type.display),
+            ),
+        ) {
+            type = if (type == BadgeType.TITLE) BadgeType.SEAL else BadgeType.TITLE
+            snapshot = null
+            mine = null
+            openLater()
+        }
+
+        button(navRow + 4, myRankIcon(current))
+
+        button(navRow + 6, Gui.item(plugin, "gui.button.rank-refresh", Material.CLOCK)) {
+            plugin.rank.request(type, force = true) { fresh ->
+                snapshot = fresh
+                openLater()
+            }
+            plugin.rank.requestPersonal(viewer.uniqueId, type) { mine = it }
+        }
+
+        button(navRow + 8, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
+            MainMenu(plugin, viewer).openLater()
+        }
+        fill()
+    }
+
+    private fun renderLoading() {
+        button(22, Gui.item(plugin, "gui.button.rank-loading", Material.CLOCK))
+        button(size - 1, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) {
+            MainMenu(plugin, viewer).openLater()
+        }
+        fill()
+    }
+
+    private fun requestData() {
+        plugin.rank.request(type) { fresh ->
+            snapshot = fresh
+            if (fresh == null) {
+                plugin.messages.send(viewer, "rank.disabled")
+                return@request
+            }
+            openLater()
+        }
+        plugin.rank.requestPersonal(viewer.uniqueId, type) { mine = it }
+    }
+
+    private fun rebuildIcons(current: RankService.Snapshot) {
+        if (iconsFor === current) return
+        icons = current.entries.take(TOP_SLOTS).mapIndexed { index, entry -> entryIcon(entry, index + 1) }
+        iconsFor = current
+    }
+
+    private fun entryIcon(entry: RankEntry, rank: Int): ItemStack {
+        val medal = when (rank) {
+            1 -> "<gold>"
+            2 -> "<white>"
+            3 -> "<#cd7f32>"
+            else -> "<gray>"
+        }
+        val lore = listOf(
+            plugin.messages.component("gui.lore.rank-count", "count" to entry.count, "type" to type.display),
+            plugin.messages.component("gui.lore.rank-position", "rank" to rank),
+        )
+        val name = Text.mini(
+            "$medal<bold><rank>위</bold> <white><name>",
+            "rank" to rank,
+            // 유저가 정한 값은 아니지만 DB 에서 온 문자열이므로 서식 태그는 무력화한다.
+            "name" to Text.escape(entry.name),
+        )
+        // 이름을 이미 알고 있으므로 OfflinePlayer 조회 경로를 타지 않는다.
+        return Items.head(entry.uuid, entry.name, name, lore)
+    }
+
+    private fun myRankIcon(snapshot: RankService.Snapshot): ItemStack {
+        val entry = mine
+        val extra = if (entry == null) {
+            listOf(plugin.messages.component("gui.lore.rank-none"))
+        } else {
+            listOf(
+                plugin.messages.component(
+                    "gui.lore.rank-mine",
+                    "rank" to entry.rank,
+                    "total" to snapshot.total,
+                    "count" to entry.count,
+                ),
+            )
+        }
+        return Gui.item(
+            plugin, "gui.button.rank-mine", Material.PLAYER_HEAD,
+            extraLore = extra,
+            placeholders = arrayOf("type" to type.display),
+        )
+    }
+
+    private companion object {
+        /** 마지막 줄은 조작 버튼이라 45칸까지만 순위를 채운다. */
+        const val TOP_SLOTS = 45
+    }
+}

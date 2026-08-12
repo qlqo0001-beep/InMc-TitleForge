@@ -1,0 +1,256 @@
+# ══════════════════════════════════════════════════════════════
+#  InMc-TitleForge
+#  칭호(Title) · 인장(Seal) · 닉네임(Nickname)
+#  모든 문자열은 MiniMessage 형식입니다. (https://docs.advntr.dev/minimessage)
+# ══════════════════════════════════════════════════════════════
+
+storage:
+  # SQLITE 또는 MYSQL
+  type: SQLITE
+  sqlite:
+    file: data.db
+  mysql:
+    host: localhost
+    port: 3306
+    database: titleforge
+    username: root
+    password: ''
+    # MariaDB 드라이버를 사용하며 MySQL 서버에도 그대로 연결됩니다.
+    # 한글 ID/닉네임을 위해 utf8mb4 를 권장합니다.
+    # 테이블도 utf8mb4 로 만들어 주세요: ALTER DATABASE titleforge CHARACTER SET utf8mb4;
+    properties: 'useUnicode=true&characterEncoding=utf8mb4'
+    pool-size: 6
+  # 변경된 프로필을 몇 초마다 일괄 저장할지 (0 = 자동 저장 끔)
+  autosave-seconds: 300
+  # 퇴장 후 캐시를 몇 초간 유지할지 (재접속이 잦은 서버는 높게)
+  cache-keep-seconds: 60
+
+title:
+  # 표시 칭호 미장착 시 플레이스홀더가 돌려줄 값
+  none-display: ''
+  # 능력치 칭호 미장착 시
+  none-stat: '<gray>없음</gray>'
+  # 보유 개수 마일스톤 보너스. "개수: {스텟: 수치}"
+  collection-milestones:
+    10:
+#      max_health: 2.0
+    25:
+#      max_health: 4.0
+#      attack_damage: 0.5
+    50:
+#      max_health: 6.0
+#      attack_damage: 1.0
+#      armor: 1.0
+
+seal:
+  none-display: ''
+
+nickname:
+  # 닉네임 기능 자체 사용 여부
+  enabled: true
+  # 입력 방식: DIALOG(다이얼로그 팝업) 또는 CHAT(채팅 입력)
+  input-mode: DIALOG
+  # 길이 계산: CHARS(글자 수) 또는 WIDTH(한글을 2로 계산)
+  length-mode: CHARS
+  min-length: 2
+  max-length: 8
+  # 허용 문자 구성
+  allow-korean: true
+  allow-english: true
+  allow-digits: true
+  allow-space: false
+  # 위 옵션 외에 추가로 허용할 문자들 (정규식 문자클래스 안에 그대로 들어갑니다)
+  extra-allowed-chars: '_-'
+  # 완성형 한글만 허용 (자음/모음 단독 입력 차단)
+  korean-complete-only: true
+  # 같은 닉네임 중복 금지
+  unique: true
+  # 포함되면 거부되는 단어 (대소문자 무시)
+  blacklist:
+    - admin
+    - 관리자
+    - 운영자
+    - staff
+  # 변경 제한
+  cooldown-seconds: 604800   # 7일. 0이면 쿨타임 없음
+  cost:
+    economy:
+      # Vault 가 설치되어 있을 때만 동작합니다.
+      enabled: false
+      amount: 10000.0
+    # ── 비용 아이템 ──
+    # 항목을 여러 개 둘 수 있습니다. 이름(vanilla_nickitem 등)은 자유롭게 정하세요.
+    # enabled: true 인 항목이 여러 개면 그중 **하나만 만족해도** 지불로 인정하며,
+    # 실제로 소모되는 것도 만족한 항목 하나뿐입니다 (이중 차감 없음).
+    # 갑옷·오프핸드는 검사 대상에서 제외되어 착용 장비가 사라지지 않습니다.
+    item:
+      vanilla_nickitem:
+        enabled: false
+        # vanilla = 일반 아이템으로 판별
+        use-type: vanilla
+        vanilla-material: PAPER
+        amount: 1
+        # 아이템 이름이 일치해야 소모됩니다. 비우면 이름 검사 없음 (MiniMessage)
+        vanilla-name: '<light_purple>닉네임 변경권</light_purple>'
+
+      mmo_nickitem:
+        enabled: false
+        # mmoitems = MMOItems 아이템으로 판별 (MMOItems 설치 필요)
+        # MMOItems 가 없으면 이 항목은 절대 만족되지 않으며 기동 시 경고가 출력됩니다.
+        use-type: mmoitems
+        mmoitems-type: CONSUMABLE
+        mmoitems-id: 닉네임변경권
+        amount: 1
+
+display:
+  # 이름 조합 포맷. <seal> <title> <nickname> 과 다른 플러그인의 %플레이스홀더% 사용 가능
+  nameplate-format: '<title> %cmi_user_prefix% <nickname>'
+  # 각 요소가 있을 때만 붙는 접미 공백 처리용
+  seal-suffix: ' '
+  title-suffix: ' '
+  # displayName(각종 시스템 메시지에 쓰이는 표시 이름) 적용
+  display-name: true
+  # 탭 리스트 이름 적용 (기본 꺼짐 — TAB 등 전용 플러그인과 충돌 방지)
+  tab: true
+  # 채팅 포맷 직접 처리 (기본 꺼짐 — 채팅 플러그인과 충돌 방지)
+  chat:
+    enabled: true
+    format: '<nameplate><dark_gray> » </dark_gray><white><message></white>'
+  # 표시 갱신 티커 주기(틱). 이름표·탭리스트가 모두 꺼져 있으면 태스크를 만들지 않습니다.
+  # 이 주기는 "얼마나 자주 확인하는지"일 뿐이고, 실제 값 재계산 비용은 아래
+  # placeholder-refresh-intervals 가 토큰별로 따로 제한합니다.
+  refresh-ticks: 1
+
+  # ── 머리 위 이름표 (여러 줄 지원) ──
+  # TextDisplay 는 줄바꿈을 스스로 렌더링하므로, 한 묶음이 몇 줄이든 엔티티는 1개입니다.
+  #
+  # 줄을 두 묶음으로 나눕니다. "내 인장은 나도 보되 내 닉네임·칭호는 내 화면에서 가리고 싶다"는
+  # 요구는 한 엔티티로 표현할 수 없기 때문입니다.
+  #   shared-lines → 본인 + 다른 플레이어 모두에게 보임
+  #   others-lines → 다른 플레이어에게만 보임 (본인 화면에서는 숨겨짐)
+  # 아래 기본값이면 본인은 인장만, 남들은 인장 + 칭호 + 닉네임을 모두 봅니다.
+  nametag:
+    enabled: true
+    # 위에서부터 한 줄씩. 치환 결과가 비면 그 줄은 자동으로 빠집니다.
+    # 내장 토큰과 다른 플러그인의 %플레이스홀더% 를 함께 쓸 수 있습니다.
+    # 내장: %tf_seal% %tf_title% %tf_nickname% %tf_player% %tf_world% %tf_ping% %tf_x% %tf_y% %tf_z%
+    shared-lines:
+      - '%tf_seal%'
+    others-lines:
+      - '%cmi_user_prefix%'      # 예시: 다른 플러그인 칭호
+      - '%tf_title%%tf_nickname%'
+    # 머리 위 높이 (블록). shared 가 others 보다 위에 오도록 더 큰 값을 줍니다.
+    others-height-offset: 0.4
+    shared-height-offset: 0.72
+    # 이름표가 보이기 시작하는 거리 (블록)
+    view-range: 32.0
+
+    # 벽·지형 너머로도 이름표가 비쳐 보일지.
+    #   true  = 블록에 가려져도 실루엣처럼 항상 보입니다. 숨은 사람을 찾기 쉬워집니다.
+    #   false = 시야가 막히면 가려집니다. 바닐라 이름표와 비슷한 느낌입니다. (기본)
+    see-through: false
+
+    # 글자 뒤 그림자.
+    #   true  = 글자마다 검은 그림자가 붙어 밝은 배경에서도 잘 읽힙니다. (기본)
+    #   false = 그림자 없이 납작하게 표시됩니다. 색이 더 선명해 보입니다.
+    text-shadow: true
+
+    # 글자 뒤 반투명 판.
+    #   true  = 글자 뒤에 배경판을 깔아 어떤 지형 위에서도 읽기 쉽습니다.
+    #   false = 글자만 떠 있어 화면이 깔끔합니다. 배경이 복잡하면 읽기 어려울 수 있습니다.
+    background: true
+    # 배경판 색상. ARGB 정수이며 background: true 일 때만 사용됩니다.
+    # 앞 두 자리가 불투명도(00=완전 투명, FF=완전 불투명)입니다.
+    # 예) 1073741824 = 0x40000000 → 25% 검정.  -16777216 = 0xFF000000 → 불투명 검정
+    background-color: 1073741824
+
+    # 바닐라 이름표(실제 아이디)를 숨길지.
+    # 닉네임을 쓰는 서버는 true 로 두어야 실제 아이디가 중복 노출되지 않습니다.
+    hide-vanilla: true
+
+  # ── 탭리스트 머리말/꼬리말 ──
+  tablist:
+    enabled: true
+    # 내장 토큰(다른 플러그인의 %플레이스홀더% 와 같은 문법으로 통일했습니다):
+    #   %tf_tps% %tf_mspt% %tf_online% %tf_max% %tf_ping% %tf_time% %tf_date%
+    #   %tf_world% %tf_player% %tf_nickname% %tf_seal% %tf_title%
+    #   %tf_x% %tf_y% %tf_z%
+    # 재계산 주기는 맨 아래 placeholder-refresh-intervals 에서 토큰별로 조절합니다.
+    header:
+      - '<gradient:#38BDF8:#8B5CF6:#EC4899><bold>InMc</bold></gradient> <white><bold>Server</bold></white>'
+      - ''
+      - '<white>%javascript_world_name% <dark_gray>||</dark_gray> <white>%javascript_biome%</white>'
+      - '<white>x : <green>%player_x%</green> <red>/</red> <white>y : <gray>%player_y%</gray> <red>/</red> <white>z : <green>%player_z%</green>'
+      - ''
+      - '<gold><bold>소지금:</bold></gold> <white><bold>%cmi_user_balance_formatted%</bold></white>  <green><bold>마을잔고:</bold></green> <white><bold>%lands_land_balance%</bold></white>'
+      - ''
+      - '<dark_green><bold>접속인원</bold></dark_green> <white>%tf_online%</white><gray>/</gray><white>%tf_max%</white>'
+      - ''
+    footer:
+      - ''
+      - '<green><bold>Ping:</bold></green> <white>%tf_ping%</white> <dark_gray>||</dark_gray> <green><bold>TPS:</bold></green> <white>%tf_tps%</white>'
+      - '<aqua><bold>%tf_time%</bold></aqua>'
+    # TPS/MSPT 색상 임계값
+    tps-good: 19.0
+    tps-warn: 15.0
+    mspt-good: 25.0
+    mspt-warn: 45.0
+
+gui:
+  # 목록 GUI 한 페이지에 표시할 칸 수 (9의 배수, 최대 45)
+  page-size: 45
+  # 미보유 항목도 목록에 노출할지 (기본값. GUI 안에서 토글 가능)
+  show-unowned-by-default: true
+  # 스텟 값을 채팅으로 입력할 때 대기 시간(초). 0 이면 무제한.
+  # 입력한 문장은 취소 처리되어 채팅·콘솔 어디에도 기록되지 않습니다.
+  chat-input-timeout-seconds: 60
+  filler: GRAY_STAINED_GLASS_PANE
+  icons:
+    title: NAME_TAG
+    seal: HEART_OF_THE_SEA
+    profile: PLAYER_HEAD
+    admin: COMMAND_BLOCK
+    owned: PAPER
+    locked: GRAY_DYE
+    equipped: ENCHANTED_BOOK
+
+# 칭호·인장 수집 개수 순위
+rank:
+  enabled: true
+  # 집계 결과 캐시 시간(초). 짧을수록 최신이지만 쿼리가 잦아집니다.
+  cache-seconds: 300
+  # 순위 GUI 에 표시할 인원 수 (최대 45)
+  top-size: 45
+
+# ══════════════════════════════════════════════════════════════
+#  플레이스홀더 재계산 주기 (단위: 밀리초)
+# ══════════════════════════════════════════════════════════════
+# 이름표·탭리스트에 쓰인 %토큰% 을 얼마나 자주 다시 계산할지 정합니다.
+# 표시 갱신 티커가 아무리 자주 돌아도 여기 지정한 주기보다 자주 계산되지 않습니다.
+#
+# %javascript_biome% 처럼 무거운 플레이스홀더를 매 틱 재평가하면 인원수에 비례해
+# 메인 스레드가 부하를 받습니다. 자주 변할 필요가 없는 값은 넉넉히 잡아주세요.
+#
+# 키는 퍼센트를 포함해 그대로 적습니다. 지정하지 않은 토큰은 기본값을 씁니다.
+# TPS·인원·시간처럼 전원이 같은 값을 보는 토큰은 주기마다 서버 전체에서 1회만 계산합니다.
+placeholder-refresh-intervals:
+  default-refresh-interval: 500
+  '%server_uptime%': 1000
+  '%server_tps_1_colored%': 1000
+  '%server_unique_joins%': 5000
+  '%player_health%': 200
+  '%player_ping%': 1000
+  '%vault_prefix%': 1000
+  '%rel_factionsuuid_relation_color%': 1000
+  '%player_x%': 50
+  '%player_y%': 50
+  '%player_z%': 50
+  # 자주 바뀌지 않는 값은 길게 잡아 부하를 줄입니다.
+  '%javascript_world_name%': 2000
+  '%javascript_biome%': 1000
+  '%cmi_user_balance_formatted%': 1000
+  '%lands_land_balance%': 2000
+  '%cmi_user_prefix%': 2000
+
+# 콘솔 디버그 로그
+debug: false
