@@ -65,8 +65,65 @@ MESSAGE_ROOTS = (
 )
 CONFIG_ROOTS = ("storage", "title", "seal", "nickname", "display", "gui", "rank", "debug")
 
+GETTERS = "getString|getInt|getLong|getBoolean|getDouble|getStringList|getConfigurationSection"
+
 KEY_PATTERN = re.compile(r'"((?:%s)\.[a-z0-9._-]+)"' % "|".join(MESSAGE_ROOTS))
-CONFIG_PATTERN = re.compile(r'(?:getString|getInt|getLong|getBoolean|getDouble|getStringList|getConfigurationSection)\(\s*"([a-z0-9._-]+)"')
+
+# 루트 `config` 를 통한 읽기만 절대 경로다.
+# `node.getInt("amount")` / `section.getLong("default-refresh-interval")` 처럼
+# 하위 ConfigurationSection 을 받아 읽는 곳은 **상대 키**라 config.yml 최상위에 없다.
+# 수신자를 구분하지 않으면 이런 상대 키를 전부 "누락" 으로 오탐한다.
+CONFIG_PATTERN = re.compile(r'\bconfig\.(?:%s)\(\s*"([a-z0-9._-]+)"' % GETTERS)
+
+# 기본 config.yml 에 일부러 두지 않는 키.
+# 값이 없을 때만 쓰이는 하위 호환 경로라, 없는 것이 정상이다.
+LEGACY_CONFIG_KEYS = {
+    # 예전 설정(display.nametag.lines)을 쓰던 서버를 위한 폴백. Settings.kt 참고.
+    "display.nametag.lines",
+}
+
+# 코드에서 문자열 조합으로 만들어지는 메시지 경로.
+# 리터럴로 등장하지 않으므로 정규식 스캔에 잡히지 않는다.
+# (조합 결과가 실제로 존재하는지는 아래 check_assembled_keys 가 따로 검사한다.)
+DYNAMIC_PREFIXES = (
+    "gui.button.slot-",       # gui.button.slot-${slot.id}.name
+    "gui.lore.stat-kind-name-",  # gui.lore.stat-kind-name-${kind.id}
+)
+
+
+def enum_ids(relative_path: str, enum_name: str) -> list[str]:
+    """`enum class X(val id: String, ...)` 에서 각 상수의 id 리터럴을 뽑는다."""
+    text = (KOTLIN / relative_path).read_text(encoding="utf-8")
+    body = text.split(f"enum class {enum_name}", 1)[1].split("\n    ;", 1)[0]
+    return re.findall(r'^\s{4}[A-Z_]+\(\s*"([a-z0-9_]+)"', body, re.MULTILINE)
+
+
+def check_assembled_keys(message_keys: set[str]) -> None:
+    """
+    문자열 조합으로 만들어지는 메시지 경로가 실제로 존재하는지 확인한다.
+
+    조합 대상 id 는 하드코딩하지 않고 enum 정의에서 읽어온다.
+    enum 에 값을 추가하고 messages.yml 을 빠뜨리면 여기서 잡힌다.
+    """
+    slot_ids = enum_ids("kr/inmc/titleforge/player/PlayerProfile.kt", "EquipSlot")
+    kind_ids = enum_ids("kr/inmc/titleforge/stat/Stat.kt", "StatKind")
+
+    if not slot_ids:
+        fail("EquipSlot 파싱 실패")
+    if not kind_ids:
+        fail("StatKind 파싱 실패")
+
+    for slot_id in slot_ids:
+        key = f"gui.button.slot-{slot_id}.name"
+        if key not in message_keys:
+            fail(f"messages.yml 누락: {key}")
+
+    for kind_id in kind_ids:
+        key = f"gui.lore.stat-kind-name-{kind_id}"
+        if key not in message_keys:
+            fail(f"messages.yml 누락: {key}")
+
+    print(f"  조립 경로 확인: 슬롯 {len(slot_ids)}종 / 스텟 종류 {len(kind_ids)}종")
 
 
 def check_keys() -> None:
@@ -84,27 +141,24 @@ def check_keys() -> None:
     for key in sorted(config_used):
         if key in config_keys:
             continue
+        if key in LEGACY_CONFIG_KEYS:
+            continue
         if any(existing.startswith(key + ".") for existing in config_keys):
             continue
         fail(f"config.yml 누락: {key}")
 
     used_messages = set(KEY_PATTERN.findall(source))
     # Gui.item(path) 는 messages 에서 "<path>.name" / "<path>.lore" 를 읽는다.
-    dynamic = {"gui.button.slot-"}  # 슬롯 id 로 조립되는 경로
     for key in sorted(used_messages):
         if key in config_used or key in config_keys:
             continue  # config 경로와 이름이 겹치는 경우
         if key in message_keys or f"{key}.name" in message_keys:
             continue
-        if any(key.startswith(prefix) for prefix in dynamic):
+        if any(key.startswith(prefix) for prefix in DYNAMIC_PREFIXES):
             continue
         fail(f"messages.yml 누락: {key}")
 
-    # 조립 경로 확인
-    for slot_id in ("stat", "show", "seal"):
-        key = f"gui.button.slot-{slot_id}.name"
-        if key not in message_keys:
-            fail(f"messages.yml 누락: {key}")
+    check_assembled_keys(message_keys)
 
     # 미사용 키 (leaf 만)
     leaves = {
@@ -119,7 +173,8 @@ def check_keys() -> None:
             continue
         if key.rsplit(".", 1)[-1].isdigit():
             continue  # 리스트 항목
-        if base.startswith("gui.button.slot-"):
+        # 조합으로 참조되는 경로는 리터럴로 안 잡힌다. 존재 여부는 check_assembled_keys 담당.
+        if any(key.startswith(p) or base.startswith(p) for p in DYNAMIC_PREFIXES):
             continue
         warn(f"messages.yml 미사용 추정: {key}")
 

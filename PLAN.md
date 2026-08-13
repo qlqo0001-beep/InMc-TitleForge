@@ -5,6 +5,31 @@
 
 ---
 
+## ✅ 종결 — 전 항목 구현 완료 (2026-08-13)
+
+**이 문서는 완료된 설계 기록입니다. 더 이상 갱신하지 않습니다.**
+
+| 지금 볼 문서 | 용도 |
+|---|---|
+| [README.md](README.md) | 현행 사용 설명서 (설치·설정·명령어·API) |
+| [CLAUDE.md](CLAUDE.md) | 개발 규칙 (구 7절). 코드 수정 시 여기를 따릅니다 |
+
+**검증 근거**
+
+- 단위 테스트 **49개 전부 통과** (StatLayout 13 · StatRegistry 9 · StatValueParser 12 ·
+  Stats 8 · DurationParser 7), 실패·에러 0
+- 셰이드 JAR 빌드 성공 — `build/libs/InMc-TitleForge-1.0.0.jar`
+- 4절 명령어(유저 9 + 관리자 12) 전부 구현, 6절 플레이스홀더 전부 구현
+- 소스 전체에 미구현 스텁 없음
+
+**계획을 넘어선 추가 구현** — 9절 "향후 확장 후보" 1번(네이티브 Paper Dialog 입력)은 이미 완료되었고,
+그 밖에 `/it help` · `/it player`(오프라인 조회·지급 GUI) · `/it resetcooldown` · `/it checkitem` ·
+전 서브커맨드 한글 별칭 · 칭호 ID 변경 · 공개 API 18개 메서드 · 취소 가능 이벤트 3종 ·
+`_mini` 플레이스홀더 · 이름표 shared/others 분리와 시야 기반 가림이 추가되었습니다.
+자세한 내용은 README 를 보세요.
+
+---
+
 ## 0. 개발 환경 및 전제
 
 | 항목 | 값 |
@@ -21,14 +46,24 @@
 
 1. **스텟 적용**: 바닐라 Attribute Modifier 기반. 커스텀 스텟(치명타 등)은 자체 컨테이너에 보관하고 API/플레이스홀더로 노출.
 2. **저장소**: SQLite 기본, config에서 MySQL 전환.
-3. **닉네임 표시**: displayName은 기본 적용, **탭/채팅은 온·오프 가능하며 기본값 OFF**. 나머지는 플레이스홀더로 외부 플러그인에 위임.
+3. **닉네임 표시**: displayName은 기본 적용, **탭/채팅은 온·오프 가능**. 나머지는 플레이스홀더로 외부 플러그인에 위임.
+   → *구현 시 변경됨: 탭·채팅 기본값은 **ON** 입니다(`display.tab`, `display.chat.enabled`).
+   TAB·채팅 전용 플러그인을 쓰는 서버는 `false` 로 끄세요.*
 4. **닉네임 변경 제한**: 권한 + 쿨타임 + Vault 경제 비용 + 아이템 소모 **3종 모두 구현**, 각각 config에서 개별 on/off.
 
-### ⚠️ 환경상 확인 불가 항목 (작업 시 조정 필요)
+### ✅ 초안 당시의 미확인 항목 — 전부 해소됨
 
-- 개발 컨테이너에서 외부 Maven 저장소 접근이 차단되어 **의존성 해석 및 컴파일 검증을 수행하지 못했습니다.**
-- `gradle.properties`의 `paperApiVersion`, `plugin.yml`의 `api-version` 두 값은 실제 Paper 26.1 좌표에 맞춰 한 번 조정이 필요할 수 있습니다. 그 외 코드는 표준 Paper API만 사용합니다.
-- 네이티브 Paper Dialog API(`Player#showDialog`)는 26.1 시그니처를 검증할 수 없어, 닉네임 입력은 **모루(Anvil) 팝업 입력을 기본**으로 구현하고 채팅 입력을 폴백으로 둡니다. `NicknameInput` 인터페이스(SPI)로 분리해 두었으므로 Dialog 구현체만 추가하면 교체됩니다.
+작성 시점에는 아래 항목을 검증할 수 없었으나, 이후 모두 확인·구현되었습니다.
+
+- ~~외부 Maven 저장소 접근 차단으로 의존성 해석 및 컴파일 검증 불가~~
+  → **해소.** 빌드·테스트 모두 성공합니다.
+- ~~`paperApiVersion` / `api-version` 조정 필요~~
+  → **확정.** `paperApiVersion=26.1.2.build.74-stable`, `plugin.yml` 의 `api-version: '1.21'`.
+- ~~Dialog API 시그니처 미검증으로 모루(Anvil) 입력을 기본으로 구현~~
+  → **해소.** 네이티브 Paper Dialog(`Dialog.create` + `Player#showDialog`)로 구현했고
+  모루 입력은 쓰지 않습니다. 입력 SPI 는 `input/TextInput.kt` 의 `TextInput` 인터페이스이며
+  `DialogTextInput`(기본) / `ChatTextInput` 두 구현체가 있습니다
+  (`nickname.input-mode: DIALOG | CHAT`).
 
 ---
 
@@ -258,14 +293,14 @@ tf_owned(uuid, type, badge_id, obtained_at, expires_at, PRIMARY KEY(uuid, type, 
 ### MMOItems 스텟
 
 - MythicLib `SharedStat` 목록 **전체**를 반영했습니다. 바닐라 Attribute 로 처리되는 항목은
-  바닐라 스텟(28종, 코드 내장)으로, MythicLib 전용 항목은 `stats.yml`(34종)로 나눠
-  **중복 적용을 피했습니다.** 가상 스텟 예시까지 합쳐 기본 63종입니다.
+  바닐라 스텟(28종, 코드 내장)으로, MythicLib 전용 항목은 `stats.yml`(35종)로 나눠
+  **중복 적용을 피했습니다.** 가상 스텟 예시까지 합쳐 기본 63종입니다(28 + 35).
 - 실제 API 는 `StatInstance#registerModifier(StatModifier)` / `removeIf(Predicate<String>)`,
   `StatModifier(String key, String stat, double value)` 입니다.
 - 원소 스텟은 서버마다 원소 이름이 달라 기본 제공하지 않고 `stats.yml` 주석에 추가 방법을 남겼습니다.
 - 적용은 `hook/MythicLibHook.kt` 가 **리플렉션으로만** 수행합니다. MythicLib 이 없거나 시그니처가
   다르면 연동만 꺼지고 값은 계속 보관·노출됩니다.
-- **바닐라 스텟 9종은 코드에 내장되어 항상 동작합니다.** MMOItems 를 쓰지 않는 서버도
+- **바닐라 스텟 28종은 코드에 내장되어 항상 동작합니다.** MMOItems 를 쓰지 않는 서버도
   이것만으로 완전히 운영할 수 있으며, GUI 는 각 스텟이 바닐라인지 MMO 인지(그리고 연동 여부까지)
   로어에 항상 명시합니다.
 
@@ -344,52 +379,10 @@ tf_owned(uuid, type, badge_id, obtained_at, expires_at, PRIMARY KEY(uuid, type, 
 
 ## 7. 칭호 플러그인 맞춤 지침 (개발 규칙)
 
-이 플러그인에 코드를 추가·수정할 때 반드시 지키는 규칙입니다.
-
-### 7.1 스레드 규칙 (최우선)
-
-1. **메인 스레드에서 JDBC·파일 I/O·네트워크 호출 금지.** 예외 없음. 저장소 접근은 `Sched.async` 안에서만.
-2. Bukkit 엔티티/인벤토리 API는 **반드시** 메인(또는 해당 엔티티 리전) 스레드에서. 비동기 → `Sched.entity(player) { }` 로 복귀.
-3. `Thread.sleep`, `Future.get()`, `join()` 을 메인 스레드에서 호출하지 않습니다.
-4. 반복 태스크는 **표시 갱신용 티커 1개만** 허용합니다(`display/DisplayTicker.kt`). 새 태스크를 만들지 말고
-   여기에 얹으며, 주기는 설정 가능해야 하고 **내용이 바뀐 경우에만** 전송해야 합니다.
-   해당 기능이 모두 꺼져 있으면 티커 자체를 만들지 않습니다.
-
-### 7.2 데이터 규칙
-
-5. 조회는 **항상 캐시**. DB는 로드/저장 경로에서만 등장합니다.
-6. 상태 변경은 `profile.mutate { }` 로 감싸 dirty 플래그를 남기고, 저장은 배치에 맡깁니다(중요 조작만 즉시 저장).
-7. 스텟 합계는 변경 시점에만 재계산(`profile.recalculate()`)하고 결과를 캐시합니다. 조회 시 계산하지 않습니다.
-8. `Settings`는 불변 스냅샷입니다. reload는 새 객체로 통째 교체하며, 참조를 필드에 오래 보관하지 않습니다.
-
-### 7.3 Paper API 규칙
-
-9. Spigot/Bukkit 대체 API가 있으면 Paper 쪽을 씁니다: `Component`(String 대신), `AsyncChatEvent`(`AsyncPlayerChatEvent` 대신), `AsyncScheduler`/`RegionScheduler`(`BukkitScheduler` 대신), `RegistryAccess`(deprecated Registry 상수 대신).
-10. 문자열 색 코드(`§`, `&`)를 코드에 직접 쓰지 않습니다. 모든 텍스트는 **MiniMessage**로 파싱합니다.
-11. 유저에게 보이는 문장은 코드에 하드코딩하지 않고 `messages.yml` 키로 관리합니다.
-12. 외부 플러그인(PlaceholderAPI, Vault) 클래스는 **훅 클래스 안에서만** 참조합니다. 존재 확인 후에만 훅을 로드해 NoClassDefFoundError를 원천 차단합니다.
-
-### 7.4 도메인 규칙
-
-13. 칭호와 인장은 `BadgeType` 하나로 분기합니다. 인장 전용 코드를 복제하지 않습니다.
-14. **인장은 어떤 경로로도 스텟을 가질 수 없습니다.** 저장 시점에 강제로 비웁니다(방어적 정규화).
-15. 장착 슬롯 3종(`STAT`/`DISPLAY`/`SEAL`)은 서로 독립입니다. 한 슬롯 변경이 다른 슬롯을 건드리지 않습니다.
-16. 스텟은 `StatRegistry` 한 곳에서만 정의합니다. 바닐라 9종은 코드 내장(외부 플러그인 없이 항상 동작),
-    그 외는 `stats.yml`. 저장·GUI·플레이스홀더·명령어가 레지스트리를 따라오도록 유지하며
-    하드코딩된 스텟 분기를 만들지 않습니다.
-16-a. 스텟 값 맵의 키는 **스텟 id 문자열**입니다. 등록되지 않은 id 도 버리지 않고 보존합니다
-    (설정 실수로 저장된 값이 지워지면 안 됩니다).
-16-b. **MMOItems 연동은 선택 사항입니다.** 연동이 없어도 바닐라 스텟만으로 서버가 완전히 돌아가야 하며,
-    GUI 는 각 스텟의 종류(바닐라/MMO/가상)와 연동 여부를 항상 명시합니다.
-17. AttributeModifier는 반드시 `titleforge:` 네임스페이스 키로 부착하고, 재적용 전 같은 네임스페이스만 골라 제거합니다. 타 플러그인의 모디파이어를 건드리지 않습니다.
-18. 최대 체력 감소 시 현재 체력 클램프를 반드시 수행합니다(즉사 방지).
-
-### 7.5 UX·안전 규칙
-
-19. 파괴적 동작(삭제, 전체 지급, 닉네임 초기화)은 확인 단계를 거칩니다.
-20. GUI 클릭은 기본 전부 취소(`setCancelled(true)`) 후 명시적으로 허용된 동작만 수행합니다. 아이템 복사 경로를 만들지 않습니다.
-21. 유저 입력(닉네임, 칭호 ID)은 화이트리스트 정규식으로 검증합니다. ID는 `[a-z0-9_]{1,32}` 소문자만 허용.
-22. 유저가 입력한 문자열을 MiniMessage로 파싱할 때는 **관리자 입력에만** 서식 태그를 허용하고, 일반 유저 닉네임은 서식 태그를 이스케이프합니다(색상 주입 방지).
+> **이 절의 내용은 [CLAUDE.md](CLAUDE.md) 로 옮겼습니다.**
+> 규칙이 두 곳에서 갈라지지 않도록 여기에는 본문을 두지 않습니다.
+> 코드를 추가·수정할 때는 CLAUDE.md 를 따르세요.
+> (7.1 스레드 / 7.2 데이터 / 7.3 Paper API / 7.4 도메인 / 7.5 UX·안전, 총 22개 규칙)
 
 ---
 
@@ -411,7 +404,7 @@ python3 tools/verify_gui.py   # 메시지·설정 키, stats.yml 검증, 슬롯 
 5. 각 메뉴의 하드코딩 슬롯이 창 크기를 벗어나는지
 6. GUI 안에서 `open()` 을 직접 호출하는 곳이 없는지 (반드시 `openLater()`)
 7. `stats.yml` 의 kind/분류/필수 필드가 올바른지, id 규칙과 중복 여부
-8. 스텟이 늘어난 상태(바닐라 9 + MMO 11)에서도 편집 GUI 슬롯이 충돌하지 않는지
+8. 스텟이 늘어난 상태(바닐라 28 + MMO 35)에서도 편집 GUI 슬롯이 충돌하지 않는지
 
 **서버 수동 확인 체크리스트**
 
@@ -454,7 +447,15 @@ python3 tools/verify_gui.py   # 메시지·설정 키, stats.yml 검증, 슬롯 
 
 ## 9. 향후 확장 후보
 
-- 네이티브 Paper Dialog API 입력 구현체 추가 (SPI 교체만으로 적용)
-- 칭호 획득 조건 자동화(통계 트리거: 접속시간, 처치수, 채굴수)
-- 칭호 세트 효과 / 기간 한정 칭호 만료
-- 시즌·랭킹 GUI, 획득 로그 조회
+**완료**
+
+- [x] 네이티브 Paper Dialog API 입력 구현체 추가 — `input/TextInput.kt` 의 `DialogTextInput`.
+      SPI 교체 없이 기본 입력 방식이 되었고 `nickname.input-mode` 로 `CHAT` 과 전환합니다.
+- [x] 기간 한정 칭호 만료 — 보유 기한(`expires_at`)으로 구현. 만료 시 자동 회수·해제·알림.
+- [x] 랭킹 GUI — `/it rank`, `rank/RankService.kt` + `gui/RankMenu.kt` (TTL 캐시).
+
+**미착수**
+
+- [ ] 칭호 획득 조건 자동화(통계 트리거: 접속시간, 처치수, 채굴수)
+- [ ] 칭호 세트 효과
+- [ ] 시즌 단위 순위, 획득 로그 조회

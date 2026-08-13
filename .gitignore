@@ -10,3 +10,5 @@ out/
 local.properties
 run/
 src.zip
+__pycache__/
+*.pyc

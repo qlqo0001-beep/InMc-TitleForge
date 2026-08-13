@@ -110,9 +110,9 @@ display:
   title-suffix: ' '
   # displayName(각종 시스템 메시지에 쓰이는 표시 이름) 적용
   display-name: true
-  # 탭 리스트 이름 적용 (기본 꺼짐 — TAB 등 전용 플러그인과 충돌 방지)
+  # 탭 리스트 이름 적용 (기본 켜짐 — TAB 등 전용 플러그인을 쓰면 false 로 끄세요)
   tab: true
-  # 채팅 포맷 직접 처리 (기본 꺼짐 — 채팅 플러그인과 충돌 방지)
+  # 채팅 포맷 직접 처리 (기본 켜짐 — 별도 채팅 플러그인을 쓰면 false 로 끄세요)
   chat:
     enabled: true
     format: '<nameplate><dark_gray> » </dark_gray><white><message></white>'
