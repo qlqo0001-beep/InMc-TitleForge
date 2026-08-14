@@ -4,6 +4,7 @@ import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.config.Settings
 import kr.inmc.titleforge.util.Sched
 import kr.inmc.titleforge.util.Text
+import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.entity.Display
@@ -195,6 +196,7 @@ class NametagService(private val plugin: TitleForgePlugin) {
             handle.rendered.remove(layer)
             return false
         }
+        val cacheKey = content.cacheKey
 
         // 살아 있고 **아직 이 플레이어에 타고 있는** 엔티티만 재사용한다.
         // 텔레포트로 승객 관계가 끊기면 여기서 걸러져 새로 만들어진다.
@@ -223,9 +225,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
 
         // 캐시 갱신은 엔티티를 확보한 **뒤에** 한다. 새로 만든 엔티티는 내용이 같아도 한 번 써야 한다.
-        if (existing != null && handle.rendered[layer] == content) return true
-        display.text(Text.mini(content))
-        handle.rendered[layer] = content
+        if (existing != null && handle.rendered[layer] == cacheKey) return true
+        display.text(content.component())
+        handle.rendered[layer] = cacheKey
         return true
     }
 
@@ -325,13 +327,37 @@ class NametagService(private val plugin: TitleForgePlugin) {
      * 설정된 줄들을 MiniMessage 원문 하나로 합친다.
      * 치환 결과가 빈 줄은 자동으로 빠진다.
      */
-    private fun renderLines(player: Player, lines: List<String>): String {
-        if (lines.isEmpty()) return ""
-        return lines.mapNotNull { line ->
-            val resolved = plugin.tokens.render(player, line)
+    private fun renderLines(player: Player, lines: List<String>): RenderedLines {
+        if (lines.isEmpty()) return RenderedLines.EMPTY
+        val session = plugin.tokens.session()
+        val kept = lines.mapNotNull { line ->
+            val resolved = session.render(player, line)
             // 치환 결과가 사실상 비어 있으면(태그만 남으면) 그 줄은 버린다.
-            if (Text.plain(Text.mini(resolved)).isBlank()) null else resolved
-        }.joinToString("<newline>")
+            if (Text.plain(Text.mini(resolved, *session.placeholders())).isBlank()) null else resolved
+        }
+        return RenderedLines(kept.joinToString("<newline>"), session.placeholders(), session.signature())
+    }
+
+    /**
+     * 치환 결과 한 묶음.
+     *
+     * 값이 자리표시자로 빠져 있어 템플릿만으로는 내용이 바뀌었는지 알 수 없다.
+     * 그래서 [cacheKey] 로 값까지 포함해 비교한다 — 안 그러면 칭호가 바뀌어도 다시 안 보낸다.
+     */
+    private class RenderedLines(
+        val template: String,
+        val placeholders: Array<Pair<String, Any?>>,
+        signature: String,
+    ) {
+        val cacheKey: String = "$template $signature"
+
+        fun isEmpty(): Boolean = template.isEmpty()
+
+        fun component(): Component = Text.mini(template, *placeholders)
+
+        companion object {
+            val EMPTY = RenderedLines("", emptyArray(), "")
+        }
     }
 
     private fun spawn(player: Player, layer: Layer): TextDisplay? = runCatching {

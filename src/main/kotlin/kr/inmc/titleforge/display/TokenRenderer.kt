@@ -58,30 +58,56 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         playerCache.clear()
     }
 
-    /** 한 줄을 치환한다. 토큰이 없으면 원문을 그대로 돌려준다. */
-    fun render(player: Player, line: String): String {
-        if (line.indexOf('%') < 0) return line
-        val bleed = plugin.settings.display.colorBleed
-        return tokenPattern.replace(line) { match ->
-            isolate(resolve(player, match.groupValues[1], match.value), bleed)
-        }
-    }
+    /** 여러 줄을 한 묶음으로 치환한다. 자리표시자 이름을 공유해야 하므로 줄마다 새로 만들지 않는다. */
+    fun session(): Session = Session(plugin.settings.display.colorBleed)
 
     /**
-     * 치환한 값이 남긴 서식이 **뒤따르는 내용까지 번지지 않도록** 가둔다.
+     * 한 번의 표시 갱신 동안의 치환 단위.
      *
-     * 예: CMI 접두사가 `<dark_green>중` 처럼 닫지 않은 색을 돌려주면, 그대로 이어 붙일 경우
-     * 뒤에 오는 `<title>`·`<nickname>` 까지 전부 그 색이 된다.
+     * ### 왜 값을 Component 로 넘기는가
+     * 예전에는 치환값을 원문에 그대로 이어 붙였다. 그러면 외부 플레이스홀더가 닫지 않은 색이
+     * 뒤따르는 칭호·닉네임까지 번진다. 태그로 감싸는 방법도 써 봤지만, 값 안에 `<reset>` 이
+     * 있으면(CMI 는 `§r` 로 끝내는 경우가 많다) **감싼 태그까지 닫혀** 닫는 태그가 짝을 잃고
+     * 글자로 출력됐다.
      *
-     * 여는 태그가 없으면(숫자·평문 등) 감쌀 이유가 없어 그대로 둔다.
-     *
-     * `<reset>` 을 쓰지 않는 이유: `<reset>` 은 **바깥에서 열어 둔 서식까지** 지운다.
-     * `<gray>이름: %토큰% 님` 에서 " 님" 의 회색까지 날아가 버린다. 태그로 감싸면 안쪽만
-     * 닫히고 바깥 서식은 그대로 이어진다.
+     * Component 로 넘기면 그 자체가 완결된 조각이라 안쪽 서식이 밖으로 나갈 수도, 바깥 구조를
+     * 깨뜨릴 수도 없다. `<reset>` 이 들어 있어도 그 조각 안에서만 작용한다.
      */
-    private fun isolate(value: String, bleed: Boolean): String {
-        if (bleed || value.indexOf('<') < 0) return value
-        return "$ISOLATE_OPEN$value$ISOLATE_CLOSE"
+    inner class Session(private val bleed: Boolean) {
+
+        private val values = ArrayList<Pair<String, Any?>>()
+        private val nameByToken = HashMap<String, String>()
+
+        /** 변경 감지용. 치환된 값들의 원문을 이어 붙인 것. */
+        private val signatureParts = ArrayList<String>()
+
+        /** @return 자리표시자 이름으로 치환된 템플릿. [placeholders] 와 함께 파싱해야 한다. */
+        fun render(player: Player, line: String): String {
+            if (line.indexOf('%') < 0) return line
+            return tokenPattern.replace(line) { match ->
+                val token = match.groupValues[1]
+                val value = resolve(player, token, match.value)
+                when {
+                    // 옵션을 켜 두면 예전처럼 그대로 흘려보낸다.
+                    bleed -> value
+                    // 서식이 없는 값(숫자·평문)은 번질 것이 없어 그대로 넣는다.
+                    value.indexOf('<') < 0 -> value
+                    else -> "<${nameByToken.getOrPut(token) { register(value) }}>"
+                }
+            }
+        }
+
+        private fun register(value: String): String {
+            val name = "$PLACEHOLDER_PREFIX${values.size}"
+            values += name to (Text.mini(value) as Any?)
+            signatureParts += value
+            return name
+        }
+
+        fun placeholders(): Array<Pair<String, Any?>> = values.toTypedArray()
+
+        /** 템플릿만으로는 값 변화를 알 수 없으므로 함께 비교할 문자열. */
+        fun signature(): String = signatureParts.joinToString("")
     }
 
     private fun resolve(player: Player, token: String, raw: String): String {
@@ -172,14 +198,11 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         val SERVER_TOKENS = setOf("tf_tps", "tf_mspt", "tf_online", "tf_max", "tf_time", "tf_date")
 
         /**
-         * 치환값을 가두는 태그.
+         * 치환값 자리표시자 이름의 접두사.
          *
-         * MiniMessage 는 여는 태그를 닫을 때 **그 안에서 열린 태그도 함께 닫는다.**
-         * 그래서 서식에 영향이 거의 없는 태그로 감싸기만 하면 안쪽 색이 밖으로 새지 않는다.
-         * 기본 폰트를 명시하는 것뿐이라 눈에 보이는 변화는 없다
-         * (바깥에서 커스텀 폰트를 지정해 둔 경우에만 그 값이 기본으로 돌아간다).
+         * MiniMessage 태그 이름 규칙(소문자·숫자·밑줄·하이픈)을 지켜야 하고,
+         * 설정에 등장할 법한 이름과 겹치지 않아야 한다.
          */
-        const val ISOLATE_OPEN = "<font:default>"
-        const val ISOLATE_CLOSE = "</font>"
+        const val PLACEHOLDER_PREFIX = "tfph_"
     }
 }

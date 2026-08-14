@@ -68,12 +68,22 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
      */
     fun nameplate(profile: PlayerProfile?, realName: String, player: Player? = null): Component {
         val format = plugin.settings.display.nameplateFormat
-        val resolved = if (player == null) format else plugin.tokens.render(player, format)
+        if (player == null) {
+            return Text.mini(
+                format,
+                "seal" to sealComponent(profile),
+                "title" to titleComponent(profile),
+                "nickname" to nicknameComponent(profile, realName),
+            )
+        }
+        val session = plugin.tokens.session()
+        val resolved = session.render(player, format)
         return Text.mini(
             resolved,
             "seal" to sealComponent(profile),
             "title" to titleComponent(profile),
             "nickname" to nicknameComponent(profile, realName),
+            *session.placeholders(),
         )
     }
 
