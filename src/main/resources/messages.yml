@@ -84,7 +84,7 @@ input:
 
 nickname:
   disabled: '<red>닉네임 기능이 비활성화되어 있습니다.'
-  prompt-chat: '<yellow>변경할 닉네임을 채팅에 입력하세요. <gray>(취소: <white>취소<gray>)'
+  prompt-chat: '<yellow>변경할 닉네임을 채팅에 입력하세요.   <gray>허용: <allowed>'
   cancelled: '<yellow>닉네임 변경을 취소했습니다.'
   changed: '<green>닉네임이 <white><nickname></white> <green>(으)로 변경되었습니다.'
   changed-other: '<green><white><target></white> <green>의 닉네임을 <white><nickname></white> <green>(으)로 설정했습니다.'

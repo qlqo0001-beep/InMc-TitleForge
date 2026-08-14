@@ -27,6 +27,7 @@ import kr.inmc.titleforge.stat.StatRegistry
 import kr.inmc.titleforge.storage.SqlStorage
 import kr.inmc.titleforge.storage.Storage
 import kr.inmc.titleforge.util.Sched
+import kr.inmc.titleforge.util.Text
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 
@@ -106,6 +107,7 @@ class TitleForgePlugin : JavaPlugin() {
         messages = Messages(this)
         messages.reload()
         settings = Settings.load(config)
+        refreshMessageGlobals()
 
         badges = BadgeRegistry()
         stats = StatRegistry(logger)
@@ -172,6 +174,7 @@ class TitleForgePlugin : JavaPlugin() {
         reloadConfig()
         settings = Settings.load(config)
         messages.reload()
+        refreshMessageGlobals()
         stats.reload(loadStatsConfig())
         statApplier.refreshDefinitions()
         rank.invalidate()
@@ -181,6 +184,28 @@ class TitleForgePlugin : JavaPlugin() {
         tokens.clear()
         nametags.refreshAll()
         tablist.clear()
+    }
+
+    /**
+     * messages.yml 어디에서나 쓸 수 있는 공용 토큰을 갱신한다.
+     *
+     * 호출부가 넘기지 않아도 되므로, 예를 들어 `nickname.prompt-chat` 에
+     * `<allowed>` 를 넣어 허용 문자를 안내할 수 있다.
+     * 값은 설정 스냅샷에서 오므로 reload 때만 다시 만든다.
+     *
+     * **토큰을 추가할 때는 README 의 표도 함께 갱신할 것.**
+     */
+    private fun refreshMessageGlobals() {
+        val nickname = settings.nickname
+        messages.setGlobals(
+            mapOf(
+                // 닉네임 허용 문자 안내. 예: "한글(완성형), 영문, 숫자, _-"
+                "allowed" to nickname.allowedDescription,
+                "nick_min" to nickname.minLength,
+                "nick_max" to nickname.maxLength,
+                "nick_cooldown" to Text.duration(nickname.cooldownSeconds),
+            ),
+        )
     }
 
     /** stats.yml 을 읽는다. 없으면 기본 파일을 깔아준다. */
