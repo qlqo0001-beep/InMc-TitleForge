@@ -28,11 +28,18 @@ object Text {
     private const val SECTION = '§'
     private const val AMPERSAND = '&'
 
-    /** `&a` `&l` 같은 표준 코드. */
-    private val AMPERSAND_CODE = Regex("&([0-9a-fk-orA-FK-OR])")
+    /** `&a` `§l` `&#rrggbb` 등 레거시 코드 전부. 구분자는 `&`/`§` 둘 다 받는다. */
+    private val LEGACY_CODE = Regex("[&§](#[0-9a-fA-F]{6}|[0-9a-fk-orA-FK-OR])")
 
-    /** `&#rrggbb` 형태의 hex 코드. */
-    private val AMPERSAND_HEX = Regex("&#([0-9a-fA-F]{6})")
+    /** 레거시 코드 → MiniMessage 태그 이름. */
+    private val LEGACY_TAGS = mapOf(
+        '0' to "black", '1' to "dark_blue", '2' to "dark_green", '3' to "dark_aqua",
+        '4' to "dark_red", '5' to "dark_purple", '6' to "gold", '7' to "gray",
+        '8' to "dark_gray", '9' to "blue", 'a' to "green", 'b' to "aqua",
+        'c' to "red", 'd' to "light_purple", 'e' to "yellow", 'f' to "white",
+        'k' to "obfuscated", 'l' to "bold", 'm' to "strikethrough",
+        'n' to "underlined", 'o' to "italic", 'r' to "reset",
+    )
 
     /**
      * @param input MiniMessage 원문
@@ -73,9 +80,7 @@ object Text {
      * [escape] 는 MiniMessage 태그만 막으므로, 유저 입력에서 `&` 색까지 차단하려면 함께 쓴다.
      * 구분자만 지우면 뒤 글자가 그대로 남아 `&c윤` 이 `c윤` 이 되어 버리므로 코드 전체를 지운다.
      */
-    fun stripLegacyCodes(raw: String): String = LEGACY_ANY_CODE.replace(raw, "")
-
-    private val LEGACY_ANY_CODE = Regex("[§&](#[0-9a-fA-F]{6}|[0-9a-fk-orA-FK-OR])")
+    fun stripLegacyCodes(raw: String): String = LEGACY_CODE.replace(raw, "")
 
     /**
      * 외부에서 받은 문자열을 MiniMessage 원문에 끼워 넣을 수 있는 형태로 바꾼다.
@@ -87,17 +92,22 @@ object Text {
      * 색이 없는 평범한 문자열은 손대지 않고 그대로 돌려주므로 비용이 거의 없다.
      */
     fun fromLegacy(raw: String): String {
-        // `&` 코드를 먼저 `§` 로 통일한 뒤 한 번만 해석한다.
-        // 색 코드로 쓰이지 않는 `&`(예: "A&B")는 정규식에 걸리지 않아 그대로 남는다.
-        val unified = if (raw.indexOf(AMPERSAND) < 0) {
-            raw
-        } else {
-            AMPERSAND_CODE.replace(AMPERSAND_HEX.replace(raw) { "$SECTION#${it.groupValues[1]}" }) {
-                "$SECTION${it.groupValues[1]}"
+        if (raw.indexOf(SECTION) < 0 && raw.indexOf(AMPERSAND) < 0) return raw
+        // 레거시 코드를 **대응하는 MiniMessage 태그로 직접 치환**한다.
+        //
+        // 예전에는 문자열 전체를 레거시로 해석한 뒤 MiniMessage 로 재직렬화했는데,
+        // 그러면 원문에 이미 들어 있던 MiniMessage 태그가 평범한 글자로 취급돼
+        // `<red>` 가 `\<red>` 로 이스케이프된다. 즉 `&r` 하나 때문에 같은 문자열의
+        // 태그와 <title>·<nickname> 같은 자리표시자가 전부 죽는다.
+        // 치환 방식은 코드만 건드리므로 섞어 써도 안전하다.
+        return LEGACY_CODE.replace(raw) { match ->
+            val code = match.groupValues[1]
+            if (code.startsWith("#")) {
+                "<$code>"
+            } else {
+                LEGACY_TAGS[code[0].lowercaseChar()]?.let { "<$it>" } ?: match.value
             }
         }
-        if (unified.indexOf(SECTION) < 0) return unified
-        return MM.serialize(LEGACY.deserialize(unified))
     }
 
     /**
