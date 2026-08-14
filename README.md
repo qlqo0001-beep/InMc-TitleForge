@@ -243,10 +243,42 @@ MythicLib 이 없으면 MMO 스텟은 값만 보관되고 API·플레이스홀�
 > `kind: virtual` 로 두면 어디에도 적용되지 않고 값만 보관되어 API·플레이스홀더로만 노출됩니다.
 > 다른 플러그인이 읽어가는 커스텀 수치를 만들 때 씁니다.
 
+## 색상 표기
+
+설정·메시지·칭호 이름·로어 등 **관리자가 쓰는 모든 문자열**에서 두 표기를 함께 지원합니다.
+
+```
+MiniMessage   <red>글자</red>  <gradient:#38BDF8:#EC4899>글자</gradient>  <bold>
+레거시 코드    &c글자   &l글자   &#ff8800글자   (§ 도 동일하게 인식)
+```
+
+섞어 써도 됩니다. `&` 뒤가 색 코드가 아니면(`Tom & Jerry`) 그냥 글자로 남습니다.
+표현력은 MiniMessage 가 더 넓으므로 그라디언트·호버 등은 MiniMessage 쪽을 쓰세요.
+
+> **닉네임 색상은 관리자 전용입니다.** 아래 [닉네임](#닉네임) 을 보세요.
+
 ## 닉네임
 
 허용 문자(한글/영문/숫자/공백/추가 문자), 최소·최대 길이, 한글 2칸 계산 여부(`length-mode`),
 금지어, 중복 금지를 전부 `config.yml` 에서 정합니다.
+
+### 색상은 `/it setnick` 으로만
+
+| 경로 | 색상 |
+|---|---|
+| `/it nick` (유저 다이얼로그) | **불가**. `&c`·`<red>`·`§c` 모두 무력화되어 글자로 남습니다 |
+| `/it setnick <플레이어> <닉네임>` (관리자) | **가능**. MiniMessage·`&` 둘 다 |
+
+유저 입력은 저장 시점에 서식이 제거·이스케이프되므로, 허용 문자 설정을 넓혀
+`&` 나 `<` 를 열어 주더라도 색상이 붙지 않습니다.
+
+```
+/it setnick Steve &c윤              빨간 윤
+/it setnick Steve <gradient:red:gold>윤</gradient>
+```
+
+중복 검사는 **색을 무시하고** 판정합니다. 누군가 `윤` 을 쓰고 있으면 `&c윤` 도 막힙니다
+(색만 바꿔 같은 이름을 쓰는 사칭 방지).
 
 변경 제한은 **권한 · 쿨타임 · Vault 경제 비용 · 아이템 소모** 4종이며 각각 개별로 켜고 끕니다
 (`nickname.cooldown-seconds` 기본값은 604800 = 7일).
@@ -429,7 +461,8 @@ placeholder-refresh-intervals:
 ## 플레이스홀더 (PlaceholderAPI)
 
 ```
-%titleforge_nickname%           현재 닉네임 (없으면 실제 아이디)
+%titleforge_nickname%           현재 닉네임 (없으면 실제 아이디). 색은 § 코드로 반환
+%titleforge_nickname_mini%      같은 값을 MiniMessage 원문으로
 %titleforge_realname%           실제 아이디
 %titleforge_has_nickname%       yes / no
 %titleforge_title_display%      표시 칭호
@@ -451,8 +484,10 @@ placeholder-refresh-intervals:
 %titleforge_rank_top_<title|seal>_<n>_count% n위 보유 수
 ```
 
-- `_mini` 접미사(`%titleforge_title_display_mini%`, `_seal_mini`, `_title_stat_mini`)를 붙이면
-  MiniMessage 원문을 그대로 돌려줍니다.
+- `_mini` 접미사(`%titleforge_title_display_mini%`, `_seal_mini`, `_title_stat_mini`,
+  `_nickname_mini`)를 붙이면 MiniMessage 원문을 그대로 돌려줍니다.
+- `%titleforge_nickname%` 은 TAB·채팅 플러그인이 바로 해석할 수 있도록 레거시(`§`) 표기로
+  나갑니다. 색이 없는 닉네임은 예전과 똑같은 평문입니다.
 - `<title|seal>` 자리에는 `t` `s` `칭호` `인장` 도 쓸 수 있고, 전부 대소문자를 가리지 않습니다.
 - 순위 관련 값은 캐시가 채워지기 전에는 빈 문자열을 돌려주고 비동기로 채웁니다.
 

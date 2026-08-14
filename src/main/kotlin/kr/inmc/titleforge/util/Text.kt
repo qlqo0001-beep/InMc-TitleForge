@@ -17,10 +17,22 @@ object Text {
 
     private val MM: MiniMessage = MiniMessage.miniMessage()
     private val PLAIN: PlainTextComponentSerializer = PlainTextComponentSerializer.plainText()
-    private val LEGACY: LegacyComponentSerializer = LegacyComponentSerializer.legacySection()
+
+    /** `§#rrggbb` 형태의 hex 도 읽을 수 있게 만든 레거시 직렬화기. */
+    private val LEGACY: LegacyComponentSerializer = LegacyComponentSerializer.builder()
+        .character(SECTION)
+        .hexColors()
+        .build()
 
     /** 레거시 색 코드 구분자. `§`(전달용)와 `&`(설정 원문용) 둘 다 본다. */
     private const val SECTION = '§'
+    private const val AMPERSAND = '&'
+
+    /** `&a` `&l` 같은 표준 코드. */
+    private val AMPERSAND_CODE = Regex("&([0-9a-fk-orA-FK-OR])")
+
+    /** `&#rrggbb` 형태의 hex 코드. */
+    private val AMPERSAND_HEX = Regex("&#([0-9a-fA-F]{6})")
 
     /**
      * @param input MiniMessage 원문
@@ -56,6 +68,16 @@ object Text {
     fun escape(raw: String): String = MM.escapeTags(raw)
 
     /**
+     * 레거시 색 코드(`§a` `&l` `&#rrggbb`)를 **제거**한다.
+     *
+     * [escape] 는 MiniMessage 태그만 막으므로, 유저 입력에서 `&` 색까지 차단하려면 함께 쓴다.
+     * 구분자만 지우면 뒤 글자가 그대로 남아 `&c윤` 이 `c윤` 이 되어 버리므로 코드 전체를 지운다.
+     */
+    fun stripLegacyCodes(raw: String): String = LEGACY_ANY_CODE.replace(raw, "")
+
+    private val LEGACY_ANY_CODE = Regex("[§&](#[0-9a-fA-F]{6}|[0-9a-fk-orA-FK-OR])")
+
+    /**
      * 외부에서 받은 문자열을 MiniMessage 원문에 끼워 넣을 수 있는 형태로 바꾼다.
      *
      * 다른 플러그인의 플레이스홀더(CMI·Vault 등)는 아직 레거시 색 코드(`§a` 같은)를
@@ -65,9 +87,26 @@ object Text {
      * 색이 없는 평범한 문자열은 손대지 않고 그대로 돌려주므로 비용이 거의 없다.
      */
     fun fromLegacy(raw: String): String {
-        if (raw.indexOf(SECTION) < 0) return raw
-        return MM.serialize(LEGACY.deserialize(raw))
+        // `&` 코드를 먼저 `§` 로 통일한 뒤 한 번만 해석한다.
+        // 색 코드로 쓰이지 않는 `&`(예: "A&B")는 정규식에 걸리지 않아 그대로 남는다.
+        val unified = if (raw.indexOf(AMPERSAND) < 0) {
+            raw
+        } else {
+            AMPERSAND_CODE.replace(AMPERSAND_HEX.replace(raw) { "$SECTION#${it.groupValues[1]}" }) {
+                "$SECTION${it.groupValues[1]}"
+            }
+        }
+        if (unified.indexOf(SECTION) < 0) return unified
+        return MM.serialize(LEGACY.deserialize(unified))
     }
+
+    /**
+     * 외부 플러그인에 넘길 때 쓰는 레거시(`§`) 표기.
+     *
+     * PlaceholderAPI 로 값을 받아 가는 쪽(TAB·채팅 플러그인 등)은 대부분 MiniMessage 를
+     * 모르고 `§` 만 해석하므로, 플레이스홀더 반환값은 이 형태로 내보낸다.
+     */
+    fun toLegacy(component: Component): String = LEGACY.serialize(component)
 
     fun plain(component: Component): String = PLAIN.serialize(component)
 

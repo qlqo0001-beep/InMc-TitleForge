@@ -121,7 +121,8 @@ class NicknameService(private val plugin: TitleForgePlugin) {
                     if (taken) {
                         plugin.messages.send(player, "nickname.duplicate")
                     } else {
-                        charge(player, profile, nickname)
+                        // 일반 유저 경로: 서식을 무력화한 값만 저장한다.
+                        charge(player, profile, sanitizeUserInput(nickname))
                     }
                 } finally {
                     // 성공하면 DB 에 값이 남아 다음 요청은 isNicknameTaken 에서 걸린다.
@@ -282,5 +283,23 @@ class NicknameService(private val plugin: TitleForgePlugin) {
 
     companion object {
         const val PERMISSION = "titleforge.nickname"
+
+        /**
+         * 관리자가 입력한 닉네임을 저장 가능한 형태로 바꾼다.
+         *
+         * **관리자에게만 서식을 허용한다**(맞춤 지침 7.5-24). `&c` 같은 레거시 코드와
+         * MiniMessage 를 모두 받아 **MiniMessage 원문 하나로 통일**해 둔다. 저장된 값이 항상
+         * 그대로 파싱 가능해야 표시 경로에서 이스케이프 없이 색을 낼 수 있다.
+         */
+        fun formatAdminInput(raw: String): String = Text.fromLegacy(raw)
+
+        /**
+         * 유저가 입력한 닉네임을 저장 가능한 형태로 바꾼다.
+         *
+         * 서식을 **무력화**해서 일반 유저가 색을 붙이지 못하게 한다. 허용 문자 화이트리스트가
+         * 이미 `&` 와 `<` 를 막고 있지만, 설정에서 `extra-allowed-chars` 를 넓히면 뚫릴 수
+         * 있으므로 입력 경계에서 한 번 더 막는다.
+         */
+        fun sanitizeUserInput(raw: String): String = Text.escape(Text.stripLegacyCodes(raw))
     }
 }

@@ -30,7 +30,11 @@ class PlaceholderHook(private val plugin: TitleForgePlugin) : PlaceholderExpansi
         val display = plugin.nameDisplay
 
         return when {
-            params.equals("nickname", true) -> display.nicknameText(profile, realName)
+            // 받아 가는 쪽(TAB·채팅 플러그인)은 MiniMessage 를 모르므로 레거시(§) 로 내보낸다.
+            // 색이 없는 평범한 닉네임은 그대로 나가므로 기존 동작과 같다.
+            params.equals("nickname", true) ->
+                Text.toLegacy(Text.mini(display.nicknameText(profile, realName)))
+            params.equals("nickname_mini", true) -> display.nicknameText(profile, realName)
             params.equals("realname", true) -> realName
             params.equals("has_nickname", true) -> yesNo(profile?.nickname != null)
 

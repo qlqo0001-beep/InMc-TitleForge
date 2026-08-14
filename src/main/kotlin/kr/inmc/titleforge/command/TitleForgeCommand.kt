@@ -5,6 +5,7 @@ import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.badge.Rarity
 import kr.inmc.titleforge.config.Settings
+import kr.inmc.titleforge.nickname.NicknameService
 import kr.inmc.titleforge.gui.AdminMenu
 import kr.inmc.titleforge.gui.BadgeListMenu
 import kr.inmc.titleforge.gui.MainMenu
@@ -497,8 +498,11 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.profile-loading")
             return
         }
-        plugin.nicknames.applyNickname(target, profile, nickname, touchCooldown = false)
-        messages.send(sender, "nickname.changed-other", "target" to target.name, "nickname" to Text.escape(nickname))
+        // 관리자만 서식을 쓸 수 있다. `&c` 등 레거시 코드도 여기서 MiniMessage 로 통일한다.
+        val formatted = NicknameService.formatAdminInput(nickname)
+        plugin.nicknames.applyNickname(target, profile, formatted, touchCooldown = false)
+        // 결과를 실제 색이 적용된 모습으로 보여 준다.
+        messages.send(sender, "nickname.changed-other", "target" to target.name, "nickname" to Text.mini(formatted))
     }
 
     private fun handleResetNick(sender: CommandSender, args: Array<out String>) {

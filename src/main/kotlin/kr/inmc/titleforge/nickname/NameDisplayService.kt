@@ -52,9 +52,13 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
     fun nicknameText(profile: PlayerProfile?, realName: String): String =
         profile?.nickname?.takeIf { it.isNotBlank() } ?: realName
 
-    /** 유저 입력이므로 반드시 이스케이프한다 (맞춤 지침 7.5-22). */
+    /**
+     * 저장된 닉네임은 **입력 경계에서 이미 안전해진 MiniMessage 원문**이다
+     * (관리자 입력은 서식 허용, 유저 입력은 이스케이프 — 맞춤 지침 7.5-24).
+     * 따라서 여기서 다시 이스케이프하면 관리자가 넣은 색까지 죽으므로 그대로 파싱한다.
+     */
     fun nicknameComponent(profile: PlayerProfile?, realName: String): Component =
-        Component.text(nicknameText(profile, realName))
+        Text.mini(nicknameText(profile, realName))
 
     /**
      * 이름 조합 결과.

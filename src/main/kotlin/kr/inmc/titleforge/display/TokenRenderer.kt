@@ -107,7 +107,9 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
             "tf_x" -> player.location.blockX.toString()
             "tf_y" -> player.location.blockY.toString()
             "tf_z" -> player.location.blockZ.toString()
-            "tf_nickname" -> Text.escape(display.nicknameText(profile, player.name))
+            // 저장된 닉네임은 입력 경계에서 이미 안전해진 MiniMessage 원문이다.
+            // 여기서 이스케이프하면 관리자가 /it setnick 으로 넣은 색이 죽는다.
+            "tf_nickname" -> display.nicknameText(profile, player.name)
             "tf_seal" -> display.sealMini(profile)
             "tf_title" -> display.titleMini(profile)
             else -> null

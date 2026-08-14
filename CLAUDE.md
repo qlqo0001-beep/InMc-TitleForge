@@ -44,6 +44,8 @@
    `AsyncScheduler`/`RegionScheduler`(`BukkitScheduler` 대신),
    `RegistryAccess`(deprecated Registry 상수 대신).
 10. 문자열 색 코드(`§`, `&`)를 코드에 직접 쓰지 않습니다. 모든 텍스트는 **MiniMessage** 로 파싱합니다.
+    설정·메시지 등 **관리자가 쓰는 값**에는 `&`/`§` 가 들어올 수 있으며, `Text.mini` 가
+    `Text.fromLegacy` 로 MiniMessage 표기로 통일해 줍니다.
 11. 유저에게 보이는 문장은 코드에 하드코딩하지 않고 `messages.yml` 키로 관리합니다.
 12. 외부 플러그인(PlaceholderAPI, Vault, MythicLib, MMOItems) 클래스는 **훅 클래스 안에서만**
     참조합니다. 존재 확인 후에만 훅을 로드해 `NoClassDefFoundError` 를 원천 차단합니다.
@@ -83,6 +85,11 @@
     칭호·인장 ID 는 `^[a-z0-9_가-힣]{1,32}$` (소문자 영문·숫자·밑줄·완성형 한글).
 24. 유저가 입력한 문자열을 MiniMessage 로 파싱할 때는 **관리자 입력에만** 서식 태그를 허용하고,
     일반 유저 닉네임은 서식 태그를 이스케이프합니다(색상 주입 방지).
+    - **불변식**: 저장된 닉네임은 항상 "그대로 파싱 가능한 MiniMessage 원문" 입니다.
+      서식 판단은 **입력 경계에서 한 번만** 합니다 —
+      `NicknameService.formatAdminInput`(서식 허용) / `sanitizeUserInput`(서식 무력화).
+      표시 경로에서는 다시 이스케이프하지 않습니다. 그러면 관리자가 넣은 색까지 죽습니다.
+    - 닉네임 중복 키는 서식을 걷어낸 뒤 만듭니다. 색만 바꿔 같은 이름을 쓰는 사칭을 막습니다.
 
 ---
 
