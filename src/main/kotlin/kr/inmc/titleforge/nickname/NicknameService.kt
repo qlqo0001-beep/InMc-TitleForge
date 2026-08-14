@@ -18,6 +18,24 @@ class NicknameService(private val plugin: TitleForgePlugin) {
 
     private val config: Settings.NicknameSettings get() = plugin.settings.nickname
 
+    /**
+     * 지금 확정 절차를 밟고 있는 정규화 닉네임 → 신청자.
+     *
+     * "중복 검사 → 비용 차감 → 저장" 이 비동기를 한 번 거치므로, 두 사람이 같은 닉네임을
+     * 동시에 신청하면 둘 다 검사를 통과할 수 있다. 이 예약이 그 구간을 직렬화한다.
+     * DB 의 UNIQUE 제약은 여러 서버가 한 DB 를 공유할 때를 위한 최종 방어선이다.
+     *
+     * 신청자를 함께 들고 있는 이유: 확정 콜백은 [Sched.entity] 로 돌아오는데, 그 사이 접속이
+     * 끊기면 **콜백이 조용히 버려진다.** 그때 예약을 놓아줄 곳이 없으면 해당 닉네임이 재시작
+     * 전까지 아무도 못 쓰게 잠긴다. 그래서 퇴장 시 [handleQuit] 이 정리한다.
+     */
+    private val reserving = java.util.concurrent.ConcurrentHashMap<String, java.util.UUID>()
+
+    /** 퇴장한 플레이어가 잡고 있던 예약을 놓아준다. */
+    fun handleQuit(uuid: java.util.UUID) {
+        reserving.values.removeIf { it == uuid }
+    }
+
     /** 입력창을 띄운다. */
     fun requestChange(player: Player) {
         if (!config.enabled) {
@@ -80,6 +98,18 @@ class NicknameService(private val plugin: TitleForgePlugin) {
             return
         }
 
+        // DB 검사와 실제 저장 사이에 다른 요청이 같은 닉네임을 확정해 버리는 경합을 막는다.
+        // 이 예약을 잡은 동안에는 같은 정규화 키로 다른 요청이 들어올 수 없다.
+        // 같은 사람이 자기 예약을 다시 잡는 건 허용한다(앞선 시도가 중간에 끊긴 경우).
+        val reservation = NicknameNormalizer.normalize(nickname)
+        if (reservation != null) {
+            val holder = reserving.putIfAbsent(reservation, profile.uuid)
+            if (holder != null && holder != profile.uuid) {
+                plugin.messages.send(player, "nickname.duplicate")
+                return
+            }
+        }
+
         Sched.async(plugin) {
             val taken = runCatching { plugin.storage.isNicknameTaken(nickname, profile.uuid) }
                 .getOrElse {
@@ -87,10 +117,16 @@ class NicknameService(private val plugin: TitleForgePlugin) {
                     true
                 }
             Sched.entity(plugin, player) {
-                if (taken) {
-                    plugin.messages.send(player, "nickname.duplicate")
-                } else {
-                    charge(player, profile, nickname)
+                try {
+                    if (taken) {
+                        plugin.messages.send(player, "nickname.duplicate")
+                    } else {
+                        charge(player, profile, nickname)
+                    }
+                } finally {
+                    // 성공하면 DB 에 값이 남아 다음 요청은 isNicknameTaken 에서 걸린다.
+                    // 실패·취소했다면 예약을 풀어 다른 사람이 쓸 수 있게 한다.
+                    if (reservation != null) reserving.remove(reservation, profile.uuid)
                 }
             }
         }

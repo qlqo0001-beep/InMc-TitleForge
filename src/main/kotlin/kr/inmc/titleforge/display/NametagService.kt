@@ -64,6 +64,28 @@ class NametagService(private val plugin: TitleForgePlugin) {
     /** ownerUuid → 지금 그 사람의 이름표를 숨기고 있는 viewer uuid 집합. 중복 hide/show 호출을 막는다. */
     private val hiddenFrom = ConcurrentHashMap<UUID, MutableSet<UUID>>()
 
+    /**
+     * 마지막으로 관측한 플레이어 위치. **후보군을 미리 좁히는 용도로만** 쓴다.
+     *
+     * [refreshVisibility] 는 owner 마다 온라인 전원을 훑는데, 각 viewer 의 좌표를 읽으려면
+     * viewer 소유 스레드로 넘어가야 해서(Folia) 판정 전에 이미 인원수 제곱만큼의 태스크가
+     * 생긴다. 좌표를 평범한 값으로 복사해 두면 그 스케줄 **이전에** 걸러낼 수 있다.
+     *
+     * 갱신은 [refresh] 안에서 공짜로 이뤄진다 — 어차피 그 플레이어를 소유한 스레드에서
+     * `display.refresh-ticks` 주기(기본 1틱)로 호출되므로 별도 태스크가 필요 없다.
+     */
+    private val positions = ConcurrentHashMap<UUID, Pos>()
+
+    private class Pos(val world: UUID, val x: Double, val y: Double, val z: Double) {
+        fun withinSquared(other: Pos, rangeSq: Double): Boolean {
+            if (world != other.world) return false
+            val dx = x - other.x
+            val dy = y - other.y
+            val dz = z - other.z
+            return dx * dx + dy * dy + dz * dz <= rangeSq
+        }
+    }
+
     private val settings: Settings.NametagSettings get() = plugin.settings.display.nametag
 
     // ── 수명 주기 ──────────────────────────────────────────────────────
@@ -88,11 +110,13 @@ class NametagService(private val plugin: TitleForgePlugin) {
         // 이 사람이 소유자였던 기록과, 다른 사람 이름표를 숨기고 있던 뷰어 기록을 모두 정리한다.
         hiddenFrom.remove(player.uniqueId)
         for (viewers in hiddenFrom.values) viewers.remove(player.uniqueId)
+        positions.remove(player.uniqueId)
     }
 
     fun removeAll() {
         handles.keys.toList().forEach { remove(it, immediate = true) }
         hiddenFrom.clear()
+        positions.clear()
     }
 
     /**
@@ -125,6 +149,11 @@ class NametagService(private val plugin: TitleForgePlugin) {
      * 플레이어 1명의 이름표를 갱신한다. 해당 플레이어를 소유한 스레드에서 호출할 것.
      */
     fun refresh(player: Player) {
+        // 이 호출은 player 소유 스레드에서만 일어나므로 좌표를 읽어도 안전하다.
+        // 여기서 복사해 둔 값이 [refreshVisibility] 의 후보군 사전 필터에 쓰인다.
+        val location = player.location
+        positions[player.uniqueId] = Pos(player.world.uid, location.x, location.y, location.z)
+
         if (!settings.enabled || !settings.hasAnyLine) {
             if (handles.containsKey(player.uniqueId)) {
                 remove(player.uniqueId, immediate = true)
@@ -199,6 +228,11 @@ class NametagService(private val plugin: TitleForgePlugin) {
         val rangeSq = settings.viewRange * settings.viewRange
         val online = Bukkit.getOnlinePlayers()
 
+        // 사전 필터는 좌표 스냅샷이 한 주기 늦을 수 있으므로 여유를 둔다.
+        // 여유 안쪽은 어차피 아래에서 실제 좌표로 다시 정확히 판정한다.
+        val candidateRangeSq = (settings.viewRange + CANDIDATE_MARGIN) *
+            (settings.viewRange + CANDIDATE_MARGIN)
+
         for ((ownerUuid, handle) in handles) {
             if (handle.displays.isEmpty()) continue
             val owner = Bukkit.getPlayer(ownerUuid) ?: continue
@@ -206,17 +240,28 @@ class NametagService(private val plugin: TitleForgePlugin) {
             Sched.entity(plugin, owner) {
                 val ownerLocation = owner.location
                 val ownerWorld = owner.world
+                val ownerPos = Pos(ownerWorld.uid, ownerLocation.x, ownerLocation.y, ownerLocation.z)
+                val hidden = hiddenFrom[ownerUuid]
 
                 for (viewer in online) {
                     if (viewer.uniqueId == ownerUuid) continue
+
+                    // ── 태스크를 만들기 전에 후보군을 좁힌다 ──
+                    // 이미 숨긴 상대가 여전히 멀리 있으면 상태가 바뀔 일이 없으므로 건너뛴다.
+                    // 스냅샷이 없는 상대(갓 접속 등)는 안전하게 후보로 남긴다.
+                    if (hidden?.contains(viewer.uniqueId) == true) {
+                        val viewerPos = positions[viewer.uniqueId]
+                        if (viewerPos != null && !viewerPos.withinSquared(ownerPos, candidateRangeSq)) {
+                            continue
+                        }
+                    }
 
                     // 실제 hideEntity/showEntity 호출과 viewer.location 읽기는 viewer 를
                     // 소유한 스레드에서만 안전하다(Folia).
                     Sched.entity(plugin, viewer) {
                         val reachable = viewer.world == ownerWorld &&
                             viewer.location.distanceSquared(ownerLocation) <= rangeSq
-                        // 이미 숨겨진 채로 범위를 벗어나 있던 상대라면 매 주기 레이캐스트를
-                        // 다시 돌릴 필요가 없다 — 상태가 바뀔 때(다시 가까워질 때)만 갱신하면 된다.
+                        // 위 사전 필터를 통과했더라도 좌표가 갱신됐을 수 있으므로 여기서 다시 확인한다.
                         if (!reachable && hiddenFrom[ownerUuid]?.contains(viewer.uniqueId) == true) {
                             return@entity
                         }
@@ -330,5 +375,14 @@ class NametagService(private val plugin: TitleForgePlugin) {
 
     private companion object {
         const val TEAM_NAME = "tf_hidden_name"
+
+        /**
+         * 후보군 사전 필터에 더하는 여유 거리(블록).
+         *
+         * 좌표 스냅샷은 최대 `display.refresh-ticks` 만큼 늦을 수 있다. 그 사이 이동한 거리를
+         * 덮지 못하면 막 가까워진 상대를 한 주기 늦게 인식한다. 겉넓이가 조금 늘어나는 비용은
+         * 인원수 제곱 스케줄에 비하면 무시할 수 있으므로 넉넉히 잡는다.
+         */
+        const val CANDIDATE_MARGIN = 32.0
     }
 }

@@ -6,6 +6,7 @@ import kr.inmc.titleforge.badge.Badge
 import kr.inmc.titleforge.badge.BadgeType
 import kr.inmc.titleforge.badge.Rarity
 import kr.inmc.titleforge.config.Settings
+import kr.inmc.titleforge.nickname.NicknameNormalizer
 import kr.inmc.titleforge.player.PlayerProfile
 import kr.inmc.titleforge.stat.Stats
 import org.bukkit.Material
@@ -95,6 +96,7 @@ class SqlStorage(
                     uuid ${text(36)} NOT NULL,
                     name ${text(16)} NOT NULL,
                     nickname ${text(64)},
+                    nickname_normalized ${text(64)},
                     nickname_changed_at BIGINT NOT NULL DEFAULT 0,
                     equip_stat ${text(32)},
                     equip_display ${text(32)},
@@ -118,13 +120,105 @@ class SqlStorage(
             )
             // 기존 설치 마이그레이션: 컬럼이 이미 있으면 실패하므로 조용히 무시한다.
             for (sql in MIGRATIONS) {
-                runCatching { st.executeUpdate(sql) }
+                runCatching { st.executeUpdate(sql.replace(NICK_NORM_TYPE, text(64))) }
             }
             // MySQL 은 CREATE INDEX IF NOT EXISTS 를 지원하지 않으므로 실패를 무시한다.
             for (sql in INDEX_STATEMENTS) {
-                runCatching { st.executeUpdate(if (sqlite) sql else sql.replace("IF NOT EXISTS ", "")) }
+                runCatching { st.executeUpdate(index(sql)) }
             }
         }
+        backfillNormalizedNicknames(conn)
+        ensureNicknameUnique(conn)
+    }
+
+    private fun index(sql: String): String = if (sqlite) sql else sql.replace("IF NOT EXISTS ", "")
+
+    /** 없으면 조용히 넘어간다. DROP INDEX 구문은 방언마다 다르다. */
+    private fun dropIndex(conn: Connection, name: String) {
+        val sql = if (sqlite) "DROP INDEX IF EXISTS $name" else "DROP INDEX $name ON tf_player"
+        runCatching { conn.createStatement().use { it.executeUpdate(sql) } }
+    }
+
+    /**
+     * 기존 행의 `nickname_normalized` 를 채운다.
+     *
+     * 정규화는 유니코드 NFKC 를 쓰므로 SQL 로는 재현할 수 없다. 값을 읽어와
+     * [NicknameNormalizer] 로 계산한 뒤 다시 써 넣는다. 이미 채워진 행은 건드리지 않으므로
+     * 두 번째 기동부터는 조회 한 번으로 끝난다.
+     */
+    private fun backfillNormalizedNicknames(conn: Connection) {
+        val pending = LinkedHashMap<String, String?>()
+        conn.prepareStatement(
+            "SELECT uuid, nickname FROM tf_player WHERE nickname IS NOT NULL AND nickname_normalized IS NULL",
+        ).use { st ->
+            st.executeQuery().use { rs ->
+                while (rs.next()) pending[rs.getString(1)] = NicknameNormalizer.normalize(rs.getString(2))
+            }
+        }
+        if (pending.isEmpty()) return
+
+        conn.prepareStatement("UPDATE tf_player SET nickname_normalized = ? WHERE uuid = ?").use { st ->
+            for ((uuid, normalized) in pending) {
+                st.setString(1, normalized)
+                st.setString(2, uuid)
+                st.addBatch()
+            }
+            st.executeBatch()
+        }
+        logger.info("닉네임 정규화 값을 ${pending.size}건 채웠습니다.")
+    }
+
+    /**
+     * 닉네임 UNIQUE 제약을 건다.
+     *
+     * **이미 중복이 있으면 제약 생성이 실패한다.** 이때 임의로 한쪽 닉네임을 지우면 관리자가
+     * 모르는 사이에 유저 데이터가 사라지므로(맞춤 지침 7.5-19), 지우지 않고 **중복 목록을
+     * 로그로 남긴 뒤 일반 인덱스로 물러난다.** 관리자가 `/it resetnick` 등으로 정리하고 서버를
+     * 다시 켜면 그때 제약이 걸린다.
+     */
+    private fun ensureNicknameUnique(conn: Connection) {
+        val duplicates = findDuplicateNicknames(conn)
+        if (duplicates.isEmpty()) {
+            val created = runCatching { conn.createStatement().use { it.executeUpdate(index(NICKNAME_UNIQUE_INDEX)) } }
+            if (created.isFailure) {
+                logger.warning("닉네임 UNIQUE 인덱스 생성 실패: ${created.exceptionOrNull()?.message}")
+                return
+            }
+            // 예전에 중복 때문에 물러나 만들어 둔 일반 인덱스가 있으면 이제 필요 없다.
+            dropIndex(conn, NICKNAME_PLAIN_NAME)
+            return
+        }
+
+        logger.severe("닉네임이 중복된 계정이 있어 UNIQUE 제약을 걸지 못했습니다. 아래를 정리한 뒤 서버를 다시 켜주세요:")
+        for ((normalized, owners) in duplicates) {
+            logger.severe("  '$normalized' → ${owners.joinToString(", ")}")
+        }
+        logger.severe("  정리 방법: /it resetnick <플레이어>  또는  /it setnick <플레이어> <새 닉네임>")
+        runCatching { conn.createStatement().use { it.executeUpdate(index(NICKNAME_PLAIN_INDEX)) } }
+    }
+
+    /** @return 정규화 닉네임 → 그 닉네임을 쓰는 계정명 목록 (2개 이상인 것만). */
+    private fun findDuplicateNicknames(conn: Connection): Map<String, List<String>> {
+        val result = LinkedHashMap<String, MutableList<String>>()
+        conn.prepareStatement(
+            """
+            SELECT nickname_normalized, name FROM tf_player
+            WHERE nickname_normalized IS NOT NULL
+              AND nickname_normalized IN (
+                SELECT nickname_normalized FROM tf_player
+                WHERE nickname_normalized IS NOT NULL
+                GROUP BY nickname_normalized HAVING COUNT(*) > 1
+              )
+            ORDER BY nickname_normalized
+            """.trimIndent(),
+        ).use { st ->
+            st.executeQuery().use { rs ->
+                while (rs.next()) {
+                    result.getOrPut(rs.getString(1)) { ArrayList() }.add(rs.getString(2))
+                }
+            }
+        }
+        return result
     }
 
     // ── Badge ──────────────────────────────────────────────────────────
@@ -330,33 +424,64 @@ class SqlStorage(
 
     override fun saveProfile(profile: PlayerProfile) = saveProfiles(listOf(profile))
 
+    /**
+     * `tf_player` 행을 UPDATE 시도 후, 없던 행만 INSERT 한다.
+     *
+     * **`REPLACE INTO` 를 쓰면 안 된다.** SQLite 의 `REPLACE`(=`INSERT OR REPLACE`)와 MySQL 의
+     * `REPLACE` 는 PK 뿐 아니라 **모든 UNIQUE 제약 충돌에서 기존 행을 지우고** 새로 넣는다.
+     * `nickname_normalized` 에 UNIQUE 가 걸린 뒤로는, 어쩌다 같은 닉네임이 저장되려 할 때
+     * 상대방의 `tf_player` 행이 통째로 삭제되어 장착 칭호·쿨타임까지 함께 사라진다.
+     *
+     * UPDATE→INSERT 로 나누면 충돌 시 조용한 삭제 대신 **예외**가 나고, 호출부가 트랜잭션을
+     * 롤백한 뒤 dirty 를 되돌려 다음 주기에 다시 시도한다.
+     */
+    private fun savePlayerRows(conn: Connection, profiles: Collection<PlayerProfile>) {
+        val now = System.currentTimeMillis()
+
+        // 1) 행이 없으면 만들어 둔다. 닉네임 없이 넣으므로 UNIQUE 충돌이 날 수 없고,
+        //    이미 있으면 IGNORE 로 조용히 넘어간다. 배치 반환값에 의존하지 않는다
+        //    (MariaDB 는 SUCCESS_NO_INFO 를 돌려줄 수 있어 건수로 판단하면 위험하다).
+        conn.prepareStatement("$insertIgnore tf_player (uuid, name) VALUES (?, ?)").use { st ->
+            for (profile in profiles) {
+                st.setString(1, profile.uuid.toString())
+                st.setString(2, profile.name)
+                st.addBatch()
+            }
+            st.executeBatch()
+        }
+
+        // 2) 실제 값을 채운다. 닉네임이 겹치면 여기서 예외가 나고 호출부가 롤백한다.
+        conn.prepareStatement(
+            """
+            UPDATE tf_player SET
+                name = ?, nickname = ?, nickname_normalized = ?, nickname_changed_at = ?,
+                equip_stat = ?, equip_display = ?, equip_seal = ?, updated_at = ?
+            WHERE uuid = ?
+            """.trimIndent(),
+        ).use { st ->
+            for (profile in profiles) {
+                st.setString(1, profile.name)
+                st.setString(2, profile.nickname)
+                st.setString(3, NicknameNormalizer.normalize(profile.nickname))
+                st.setLong(4, profile.nicknameChangedAt)
+                st.setString(5, profile.statTitle)
+                st.setString(6, profile.displayTitle)
+                st.setString(7, profile.seal)
+                st.setLong(8, now)
+                st.setString(9, profile.uuid.toString())
+                st.addBatch()
+            }
+            st.executeBatch()
+        }
+    }
+
     override fun saveProfiles(profiles: Collection<PlayerProfile>) {
         if (profiles.isEmpty()) return
         connection { conn ->
             val previousAutoCommit = conn.autoCommit
             conn.autoCommit = false
             try {
-                conn.prepareStatement(
-                    """
-                    REPLACE INTO tf_player
-                    (uuid, name, nickname, nickname_changed_at, equip_stat, equip_display, equip_seal, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """.trimIndent(),
-                ).use { st ->
-                    val now = System.currentTimeMillis()
-                    for (profile in profiles) {
-                        st.setString(1, profile.uuid.toString())
-                        st.setString(2, profile.name)
-                        st.setString(3, profile.nickname)
-                        st.setLong(4, profile.nicknameChangedAt)
-                        st.setString(5, profile.statTitle)
-                        st.setString(6, profile.displayTitle)
-                        st.setString(7, profile.seal)
-                        st.setLong(8, now)
-                        st.addBatch()
-                    }
-                    st.executeBatch()
-                }
+                savePlayerRows(conn, profiles)
                 // 보유 목록은 트랜잭션 안에서 통째로 교체한다. (회수 반영 + N+1 조회 회피)
                 conn.prepareStatement("DELETE FROM tf_owned WHERE uuid = ?").use { st ->
                     for (profile in profiles) {
@@ -403,8 +528,9 @@ class SqlStorage(
     }
 
     override fun isNicknameTaken(nickname: String, except: UUID?): Boolean = connection { conn ->
-        conn.prepareStatement("SELECT uuid FROM tf_player WHERE LOWER(nickname) = LOWER(?) LIMIT 5").use { st ->
-            st.setString(1, nickname)
+        // 정규화 컬럼을 그대로 비교한다. LOWER(컬럼) 으로 감싸면 인덱스를 타지 못한다.
+        conn.prepareStatement("SELECT uuid FROM tf_player WHERE nickname_normalized = ? LIMIT 5").use { st ->
+            st.setString(1, NicknameNormalizer.normalize(nickname))
             st.executeQuery().use { rs ->
                 var taken = false
                 while (rs.next()) {
@@ -532,13 +658,41 @@ class SqlStorage(
     private companion object {
         val MIGRATIONS = listOf(
             "ALTER TABLE tf_owned ADD COLUMN expires_at BIGINT NOT NULL DEFAULT 0",
+            "ALTER TABLE tf_player ADD COLUMN nickname_normalized $NICK_NORM_TYPE",
         )
+
+        /** [MIGRATIONS] 안에서 방언별 타입으로 치환되는 자리표시자. */
+        const val NICK_NORM_TYPE = "__NICK_NORM_TYPE__"
 
         val INDEX_STATEMENTS = listOf(
             "CREATE INDEX IF NOT EXISTS idx_tf_player_name ON tf_player (name)",
-            "CREATE INDEX IF NOT EXISTS idx_tf_player_nickname ON tf_player (nickname)",
             "CREATE INDEX IF NOT EXISTS idx_tf_owned_badge ON tf_owned (type, badge_id)",
             "CREATE INDEX IF NOT EXISTS idx_tf_owned_rank ON tf_owned (type, uuid)",
         )
+
+        /**
+         * 닉네임 중복을 **DB 차원에서** 막는 제약.
+         *
+         * 애플리케이션 검사만으로는 "검사 → 저장" 사이에 다른 요청이 끼어드는 경합을 막을 수
+         * 없어서, 최종 방어선을 DB 에 둔다. NULL 은 여러 행이 있어도 UNIQUE 에 걸리지 않으므로
+         * 닉네임 미설정 플레이어는 영향을 받지 않는다.
+         */
+        const val NICKNAME_UNIQUE_NAME = "idx_tf_player_nick_uq"
+
+        /** 제약을 걸 수 없을 때 최소한 조회 성능이라도 확보하는 대체 인덱스. */
+        const val NICKNAME_PLAIN_NAME = "idx_tf_player_nick_norm"
+
+        /**
+         * 두 인덱스의 **이름이 서로 달라야 한다.**
+         *
+         * 같은 이름을 쓰면, 중복 때문에 한 번 일반 인덱스로 물러난 뒤 관리자가 중복을 정리하고
+         * 재기동해도 `CREATE UNIQUE INDEX IF NOT EXISTS` 가 "이미 있음" 으로 조용히 넘어가
+         * 제약이 영영 걸리지 않는다.
+         */
+        const val NICKNAME_UNIQUE_INDEX =
+            "CREATE UNIQUE INDEX IF NOT EXISTS $NICKNAME_UNIQUE_NAME ON tf_player (nickname_normalized)"
+
+        const val NICKNAME_PLAIN_INDEX =
+            "CREATE INDEX IF NOT EXISTS $NICKNAME_PLAIN_NAME ON tf_player (nickname_normalized)"
     }
 }

@@ -75,6 +75,7 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
         plugin.nameDisplay.cleanup(event.player)
         plugin.tablist.handleQuit(event.player)
         plugin.tokens.handleQuit(event.player.uniqueId)
+        plugin.nicknames.handleQuit(event.player.uniqueId)
         plugin.rank.forget(event.player.uniqueId)
         plugin.profiles.handleQuit(event.player)
     }
