@@ -76,6 +76,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
      */
     private val positions = ConcurrentHashMap<UUID, Pos>()
 
+    /** 텔레포트가 끝날 때까지 이름표 재생성을 막는 유예. */
+    private val teleporting = TeleportGrace(TELEPORT_GRACE_MS)
+
     private class Pos(val world: UUID, val x: Double, val y: Double, val z: Double) {
         fun withinSquared(other: Pos, rangeSq: Double): Boolean {
             if (world != other.world) return false
@@ -111,12 +114,14 @@ class NametagService(private val plugin: TitleForgePlugin) {
         hiddenFrom.remove(player.uniqueId)
         for (viewers in hiddenFrom.values) viewers.remove(player.uniqueId)
         positions.remove(player.uniqueId)
+        teleporting.release(player.uniqueId)
     }
 
     fun removeAll() {
         handles.keys.toList().forEach { remove(it, immediate = true) }
         hiddenFrom.clear()
         positions.clear()
+        teleporting.clear()
     }
 
     /**
@@ -125,7 +130,13 @@ class NametagService(private val plugin: TitleForgePlugin) {
      * 엔티티를 지우기만 하면 되므로 다음 주기의 [refresh] 가 새 위치에 다시 만들어 붙인다.
      */
     fun detachFor(player: Player) {
+        // 텔레포트 이벤트는 **실제 이동 전에** 온다. 여기서 떼어내도 표시 갱신 티커가
+        // (기본 매 틱) 이동 직전에 다시 붙여 버리면, 그 엔티티가 이동과 함께 분리되어
+        // 떠나온 자리에 그대로 남는다. 이동이 끝날 때까지 재생성을 잠깐 막는다.
+        teleporting.mark(player.uniqueId)
         remove(player.uniqueId, immediate = true)
+        // 이동이 끝난 다음 틱에 바로 풀어 준다. 만료 시각은 이 콜백이 유실됐을 때의 보험이다.
+        Sched.entity(plugin, player) { teleporting.release(player.uniqueId) }
     }
 
     /**
@@ -153,6 +164,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
         // 여기서 복사해 둔 값이 [refreshVisibility] 의 후보군 사전 필터에 쓰인다.
         val location = player.location
         positions[player.uniqueId] = Pos(player.world.uid, location.x, location.y, location.z)
+
+        // 이동이 끝나기 전에 다시 붙이면 떠나온 자리에 이름표가 남는다.
+        if (teleporting.isActive(player.uniqueId)) return
 
         if (!settings.enabled || !settings.hasAnyLine) {
             if (handles.containsKey(player.uniqueId)) {
@@ -184,7 +198,17 @@ class NametagService(private val plugin: TitleForgePlugin) {
 
         // 살아 있고 **아직 이 플레이어에 타고 있는** 엔티티만 재사용한다.
         // 텔레포트로 승객 관계가 끊기면 여기서 걸러져 새로 만들어진다.
-        val existing = handle.displays[layer]?.takeIf { it.isValid && it.vehicle?.uniqueId == player.uniqueId }
+        val cached = handle.displays[layer]
+        val existing = cached?.takeIf { it.isValid && it.vehicle?.uniqueId == player.uniqueId }
+
+        // 재사용할 수 없게 된 엔티티는 **반드시 지우고** 넘어간다.
+        // 참조만 덮어쓰면 승객 관계가 끊긴 그 엔티티가 월드에 그대로 남는다.
+        // 텔레포트 직후 예전 자리에 이름표가 떠 있던 원인이 이것이었다.
+        if (cached != null && existing == null) {
+            handle.displays.remove(layer)
+            handle.rendered.remove(layer)
+            Sched.entity(plugin, cached) { runCatching { cached.remove() } }
+        }
         val display = existing ?: spawn(player, layer)?.also {
             handle.displays[layer] = it
             // 새로 만든 엔티티는 누구에게도 숨겨진 적이 없다(hideEntity 상태는 엔티티별로 따로 관리됨).
@@ -384,5 +408,13 @@ class NametagService(private val plugin: TitleForgePlugin) {
          * 인원수 제곱 스케줄에 비하면 무시할 수 있으므로 넉넉히 잡는다.
          */
         const val CANDIDATE_MARGIN = 32.0
+
+        /**
+         * 텔레포트 유예 시간(ms).
+         *
+         * 정상 경로에서는 이동 직후 다음 틱에 곧바로 해제되므로 이 값까지 기다리지 않는다.
+         * 해제 콜백이 유실됐을 때 이름표가 영영 안 돌아오는 것만 막는 보험이다.
+         */
+        const val TELEPORT_GRACE_MS = 1000L
     }
 }
