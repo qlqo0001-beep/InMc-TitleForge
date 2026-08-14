@@ -138,6 +138,13 @@ class Settings private constructor(
         val placeholderIntervals: PlaceholderIntervals,
         /** 표시 갱신 티커 주기(틱). */
         val refreshTicks: Long,
+        /**
+         * 플레이스홀더가 남긴 색이 뒤 내용까지 번지게 둘지.
+         *
+         * `false`(기본)면 각 `%토큰%` 값을 격리해, 닫히지 않은 색이 뒤따르는 칭호·닉네임에
+         * 묻지 않는다. `true` 면 예전처럼 그대로 흘려보낸다.
+         */
+        val colorBleed: Boolean,
     )
 
     /**
@@ -271,6 +278,7 @@ class Settings private constructor(
             )
 
             val display = DisplaySettings(
+                colorBleed = config.getBoolean("display.color-bleed", false),
                 nameplateFormat = config.getString("display.nameplate-format", "<seal><title><nickname>")!!,
                 sealSuffix = config.getString("display.seal-suffix", " ")!!,
                 titleSuffix = config.getString("display.title-suffix", " ")!!,
