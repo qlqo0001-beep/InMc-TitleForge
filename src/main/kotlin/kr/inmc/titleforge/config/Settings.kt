@@ -18,6 +18,8 @@ class Settings private constructor(
     val gui: GuiSettings,
     val rank: RankSettings,
     val debug: Boolean,
+    /** bStats 익명 통계 전송 여부. */
+    val metricsEnabled: Boolean,
 ) {
 
     enum class StorageType { SQLITE, MYSQL }
@@ -354,6 +356,7 @@ class Settings private constructor(
                 gui = gui,
                 rank = rank,
                 debug = config.getBoolean("debug", false),
+                metricsEnabled = config.getBoolean("metrics", true),
             )
         }
 

@@ -49,6 +49,11 @@
 11. 유저에게 보이는 문장은 코드에 하드코딩하지 않고 `messages.yml` 키로 관리합니다.
 12. 외부 플러그인(PlaceholderAPI, Vault, MythicLib, MMOItems) 클래스는 **훅 클래스 안에서만**
     참조합니다. 존재 확인 후에만 훅을 로드해 `NoClassDefFoundError` 를 원천 차단합니다.
+    - 셰이딩하는 라이브러리(HikariCP, bStats)는 **반드시 relocate** 합니다. 특히 bStats 는
+      relocate 하지 않으면 다른 플러그인과 충돌하고 라이브러리가 스스로 거부합니다.
+    - bStats 차트 콜백은 **비메인 스레드**에서 돕니다. Bukkit API 를 건드리지 말고
+      불변 스냅샷(`Settings`)과 동시성 컬렉션만 읽습니다.
+    - 통계에 플레이어 이름·UUID·닉네임 등 **개인 식별 값을 넣지 않습니다.** 설정 집계만 보냅니다.
 
 ## 4. 도메인 규칙
 

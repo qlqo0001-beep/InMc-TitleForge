@@ -71,7 +71,7 @@ Windows 에서는 `build.bat` 이 테스트를 건너뛴 빠른 빌드를 수행
 | Shadow | 9.0.0 (`com.gradleup.shadow`) |
 | Paper API | `paperApiVersion=26.1.2.build.74-stable` |
 | `plugin.yml` | `api-version: '1.21'` |
-| 셰이딩 | HikariCP 7.0.2 (→ `kr.inmc.titleforge.lib.hikari` 로 relocate), sqlite-jdbc 3.50.3.0, mariadb-java-client 3.5.4 |
+| 셰이딩 | HikariCP 7.0.2 (→ `kr.inmc.titleforge.lib.hikari`), bStats 3.1.0 (→ `kr.inmc.titleforge.lib.bstats`), sqlite-jdbc 3.50.3.0, mariadb-java-client 3.5.4 |
 
 JDBC 드라이버는 드라이버 이름 문자열 로딩과 충돌하지 않도록 **relocate 하지 않습니다.**
 서버 버전을 바꿀 때는 `gradle.properties` 의 `paperApiVersion` 한 줄만 조정하면 됩니다.
@@ -302,6 +302,28 @@ nickname:
 허용 문자(한글/영문/숫자/공백/추가 문자), 최소·최대 길이, 한글 2칸 계산 여부(`length-mode`),
 금지어, 중복 금지를 전부 `config.yml` 에서 정합니다.
 
+### 원래 아이디로 되돌리기
+
+```
+/it nick reset      (별칭: /it nick 초기화)
+```
+
+닉네임을 지우고 원래 아이디로 돌아갑니다. **비용도 쿨타임도 들지 않습니다.**
+관리자용 `/it resetnick <플레이어>` 와 달리 유저가 스스로 실행합니다.
+
+### 실제 아이디와 겹치는 닉네임
+
+닉네임 `nine` 과 실제 아이디가 `nine` 인 계정이 함께 있으면, 명령어에서 "nine" 이 누구를
+가리키는지 접속 여부에 따라 달라집니다. 두 겹으로 막습니다.
+
+1. **사전 차단** — 이미 서버에 알려진 실제 아이디와 겹치는 닉네임은 신청 단계에서 거부됩니다.
+2. **사후 해제** — 그 아이디의 계정이 나중에 **처음 접속**하면, 그 닉네임을 쓰고 있던 사람의
+   닉네임이 해제되고 원래 아이디로 돌아갑니다. 실제 아이디가 우선입니다.
+
+> 해제된 사람에게는 반드시 알립니다. 그 순간 접속 중이 아니면 **다음 접속 때** 알림이 뜹니다
+> (DB 에 남기므로 서버를 재시작해도 유실되지 않습니다). 이후 `/it nick` 으로 다른 닉네임을
+> 설정하면 됩니다.
+
 ### 색상은 `/it setnick` 으로만
 
 | 경로 | 색상 |
@@ -445,6 +467,7 @@ placeholder-refresh-intervals:
 /it seal  [인장ID]             인장 장착 (생략 시 목록 GUI)
 /it unequip <stat|show|seal>  해제
 /it nick                      닉네임 변경
+/it nick reset                원래 아이디로 되돌리기 (비용·쿨타임 없음)
 /it rank [title|seal]         수집 개수 순위
 ```
 
@@ -607,6 +630,27 @@ TAB·채팅 전용 플러그인을 쓰는 서버라면 `false` 로 꺼서 충돌
 
 메시지는 전부 `messages.yml` 에 있고 MiniMessage 형식입니다.
 `/it reload` 로 `config.yml` · `messages.yml` · `stats.yml` 을 함께 다시 읽습니다.
+
+## 통계 (bStats)
+
+익명 통계를 [bStats](https://bstats.org) 로 보냅니다. `config.yml` 의 `metrics: false` 로
+이 플러그인만 끌 수 있고, `plugins/bStats/config.yml` 로 서버 전체를 끌 수 있습니다.
+
+| 보내는 것 | 보내지 않는 것 |
+|---|---|
+| bStats 기본 정보(서버 버전·플레이어 수·자바 버전 등) | 플레이어 이름 · UUID |
+| 저장소 종류(SQLITE/MYSQL) | 닉네임 |
+| 이름표·탭리스트·채팅 사용 여부, 색 번짐 설정 | 칭호·인장 이름 |
+| 닉네임 기능 사용 여부, 입력 방식 | 서버 주소 · IP |
+| 선택 연동 사용 여부(PlaceholderAPI/Vault/MythicLib/MMOItems) | |
+| 칭호·인장 개수, 커스텀 스텟 개수 구간 | |
+
+수집 항목은 전부 설정 집계이며 개인을 알아볼 수 있는 값은 포함되지 않습니다.
+bStats 는 `kr.inmc.titleforge.lib.bstats` 로 relocate 되어 다른 플러그인과 충돌하지 않습니다.
+
+> **포크해서 쓰신다면** `hook/MetricsHook.kt` 의 `SERVICE_ID` 를 본인 것으로 바꾸세요.
+> [bstats.org/getting-started](https://bstats.org/getting-started) 에서 플러그인을 등록하면
+> 숫자 ID 를 받습니다. `0` 인 동안에는 아무것도 전송하지 않고 경고 한 줄만 남깁니다.
 
 ## 라이선스 / 제작
 

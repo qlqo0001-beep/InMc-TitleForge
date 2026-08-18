@@ -85,7 +85,14 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
                 }
             }
 
-            "nick", "닉네임" -> player(sender)?.let { plugin.nicknames.requestChange(it) }
+            "nick", "닉네임" -> player(sender)?.let { target ->
+                // `/it nick reset` 은 원래 아이디로 되돌린다 (비용·쿨타임 없음).
+                if (args.getOrNull(1)?.lowercase() in NICK_RESET_ARGS) {
+                    plugin.nicknames.resetOwn(target)
+                } else {
+                    plugin.nicknames.requestChange(target)
+                }
+            }
 
             "rank", "순위" -> handleRank(sender, args)
 
@@ -663,6 +670,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
                 "equip", "show" -> ownedIds(sender, BadgeType.TITLE)
                 "seal" -> ownedIds(sender, BadgeType.SEAL)
                 "unequip" -> listOf("stat", "show", "seal")
+                "nick" -> NICK_RESET_ARGS.toList()
                 "info" -> onlineNames()
                 "rank" -> TYPES + if (admin) listOf("refresh") else emptyList()
                 "create", "delete", "edit", "giveall" -> if (admin) TYPES else emptyList()
@@ -726,6 +734,9 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
     private companion object {
         const val ADMIN = "titleforge.admin"
         const val USE = "titleforge.use"
+
+        /** `/it nick <이것>` 이면 원래 아이디로 되돌린다. */
+        val NICK_RESET_ARGS = setOf("reset", "초기화")
 
         val TYPES = listOf("title", "seal")
 

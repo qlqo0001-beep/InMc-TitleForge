@@ -97,6 +97,7 @@ class SqlStorage(
                     name ${text(16)} NOT NULL,
                     nickname ${text(64)},
                     nickname_normalized ${text(64)},
+                    nickname_reset_notice ${text(64)},
                     nickname_changed_at BIGINT NOT NULL DEFAULT 0,
                     equip_stat ${text(32)},
                     equip_display ${text(32)},
@@ -394,6 +395,7 @@ class SqlStorage(
             st.executeQuery().use { rs ->
                 if (rs.next()) {
                     profile.nickname = rs.getString("nickname")?.takeIf { it.isNotBlank() }
+                    profile.nicknameResetNotice = rs.getString("nickname_reset_notice")?.takeIf { it.isNotBlank() }
                     profile.nicknameChangedAt = rs.getLong("nickname_changed_at")
                     profile.statTitle = rs.getString("equip_stat")?.takeIf { it.isNotBlank() }
                     profile.displayTitle = rs.getString("equip_display")?.takeIf { it.isNotBlank() }
@@ -454,7 +456,8 @@ class SqlStorage(
         conn.prepareStatement(
             """
             UPDATE tf_player SET
-                name = ?, nickname = ?, nickname_normalized = ?, nickname_changed_at = ?,
+                name = ?, nickname = ?, nickname_normalized = ?, nickname_reset_notice = ?,
+                nickname_changed_at = ?,
                 equip_stat = ?, equip_display = ?, equip_seal = ?, updated_at = ?
             WHERE uuid = ?
             """.trimIndent(),
@@ -463,12 +466,13 @@ class SqlStorage(
                 st.setString(1, profile.name)
                 st.setString(2, profile.nickname)
                 st.setString(3, NicknameNormalizer.normalize(profile.nickname))
-                st.setLong(4, profile.nicknameChangedAt)
-                st.setString(5, profile.statTitle)
-                st.setString(6, profile.displayTitle)
-                st.setString(7, profile.seal)
-                st.setLong(8, now)
-                st.setString(9, profile.uuid.toString())
+                st.setString(4, profile.nicknameResetNotice)
+                st.setLong(5, profile.nicknameChangedAt)
+                st.setString(6, profile.statTitle)
+                st.setString(7, profile.displayTitle)
+                st.setString(8, profile.seal)
+                st.setLong(9, now)
+                st.setString(10, profile.uuid.toString())
                 st.addBatch()
             }
             st.executeBatch()
@@ -527,10 +531,25 @@ class SqlStorage(
         }
     }
 
+    /**
+     * 이미 알려진 **실제 아이디**와 겹치는지도 함께 본다.
+     *
+     * 실명 `nine` 인 계정이 있는데 다른 사람이 닉네임 `nine` 을 쓰면, 명령어에서 "nine" 이
+     * 누구를 가리키는지 모호해진다. 설정 시점에 막아 두는 편이 낫다.
+     *
+     * 실명 비교를 SQL 로 해도 되는 이유: 마인크래프트 아이디는 `[a-zA-Z0-9_]{3,16}` 로
+     * **순수 ASCII** 라서 [NicknameNormalizer] 의 NFKC·서식 제거가 아무 일도 하지 않는다.
+     * 즉 정규화 결과 == 소문자 이므로 `LOWER(name)` 비교와 정확히 같다.
+     * (전체 행을 읽어 와 애플리케이션에서 비교할 필요가 없다.)
+     */
     override fun isNicknameTaken(nickname: String, except: UUID?): Boolean = connection { conn ->
         // 정규화 컬럼을 그대로 비교한다. LOWER(컬럼) 으로 감싸면 인덱스를 타지 못한다.
-        conn.prepareStatement("SELECT uuid FROM tf_player WHERE nickname_normalized = ? LIMIT 5").use { st ->
-            st.setString(1, NicknameNormalizer.normalize(nickname))
+        conn.prepareStatement(
+            "SELECT uuid FROM tf_player WHERE nickname_normalized = ? OR LOWER(name) = ? LIMIT 5",
+        ).use { st ->
+            val key = NicknameNormalizer.normalize(nickname)
+            st.setString(1, key)
+            st.setString(2, key)
             st.executeQuery().use { rs ->
                 var taken = false
                 while (rs.next()) {
@@ -541,6 +560,22 @@ class SqlStorage(
                     }
                 }
                 taken
+            }
+        }
+    }
+
+    override fun findNicknameHolder(normalized: String, except: UUID): Pair<UUID, String>? = connection { conn ->
+        conn.prepareStatement(
+            "SELECT uuid, nickname FROM tf_player WHERE nickname_normalized = ? AND uuid <> ? LIMIT 1",
+        ).use { st ->
+            st.setString(1, normalized)
+            st.setString(2, except.toString())
+            st.executeQuery().use { rs ->
+                if (!rs.next()) return@connection null
+                val holder = runCatching { UUID.fromString(rs.getString(1)) }.getOrNull()
+                    ?: return@connection null
+                val nickname = rs.getString(2) ?: return@connection null
+                holder to nickname
             }
         }
     }
@@ -659,6 +694,7 @@ class SqlStorage(
         val MIGRATIONS = listOf(
             "ALTER TABLE tf_owned ADD COLUMN expires_at BIGINT NOT NULL DEFAULT 0",
             "ALTER TABLE tf_player ADD COLUMN nickname_normalized $NICK_NORM_TYPE",
+            "ALTER TABLE tf_player ADD COLUMN nickname_reset_notice $NICK_NORM_TYPE",
         )
 
         /** [MIGRATIONS] 안에서 방언별 타입으로 치환되는 자리표시자. */

@@ -72,6 +72,16 @@ class PlayerProfile(val uuid: UUID, name: String) {
     @Volatile
     var nicknameChangedAt: Long = 0L
 
+    /**
+     * 실명 충돌로 닉네임이 강제 해제됐을 때, **다음 접속 때 알려 줄** 예전 닉네임.
+     *
+     * 남의 닉네임을 말없이 지우는 셈이라(맞춤 지침 7.5-21) 반드시 당사자에게 알려야 하는데,
+     * 그 시점에 접속 중이 아닐 수 있다. 메모리에만 두면 서버가 재시작하는 순간 사라지므로
+     * DB(`tf_player.nickname_reset_notice`)에 남긴다. 알림을 띄운 뒤 비운다.
+     */
+    @Volatile
+    var nicknameResetNotice: String? = null
+
     @Volatile
     var equipStats: Map<String, Double> = emptyMap()
         internal set

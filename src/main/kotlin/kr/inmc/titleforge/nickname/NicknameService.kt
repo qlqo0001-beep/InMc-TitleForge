@@ -6,6 +6,7 @@ import kr.inmc.titleforge.config.Settings
 import kr.inmc.titleforge.player.PlayerProfile
 import kr.inmc.titleforge.util.Sched
 import kr.inmc.titleforge.util.Text
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 
@@ -203,6 +204,95 @@ class NicknameService(private val plugin: TitleForgePlugin) {
                 "item" to itemLabel(chosen), "amount" to chosen.amount,
             )
         }
+    }
+
+    /**
+     * 유저가 스스로 닉네임을 지우고 원래 아이디로 돌아간다.
+     *
+     * 되돌리는 것뿐이라 비용도 쿨타임도 걷지 않는다. 관리자를 부르지 않고도
+     * 되돌릴 수 있어야 [enforceRealNameOwnership] 의 강제 해제 이후 UX 가 완성된다.
+     */
+    fun resetOwn(player: Player) {
+        if (!config.enabled) {
+            plugin.messages.send(player, "nickname.disabled")
+            return
+        }
+        if (!player.hasPermission(PERMISSION)) {
+            plugin.messages.send(player, "general.no-permission")
+            return
+        }
+        val profile = plugin.profiles.of(player) ?: run {
+            plugin.messages.send(player, "general.profile-loading")
+            return
+        }
+        if (profile.nickname == null) {
+            plugin.messages.send(player, "nickname.no-nickname")
+            return
+        }
+        if (applyNickname(player, profile, null, touchCooldown = false)) {
+            plugin.messages.send(player, "nickname.reset")
+        }
+    }
+
+    /**
+     * 접속한 플레이어의 **실제 아이디**를 닉네임으로 선점하고 있는 사람이 있으면 풀어 준다.
+     *
+     * 실명 `nine` 인 계정이 처음 접속했는데 다른 사람이 닉네임 `nine` 을 쓰고 있으면,
+     * 명령어에서 "nine" 이 누구를 가리키는지 접속 여부에 따라 달라져 비결정적이 된다.
+     * 실명을 우선해 닉네임 쪽을 해제한다.
+     *
+     * 남의 닉네임을 지우는 동작이므로 반드시 알린다. 그 사람이 접속 중이 아니면
+     * [PlayerProfile.nicknameResetNotice] 에 남겨 다음 접속 때 전달한다(서버 재시작에도 살아남는다).
+     *
+     * **비동기 컨텍스트에서 호출할 것.**
+     */
+    fun enforceRealNameOwnership(player: Player) {
+        if (!config.enabled || !config.unique) return
+        val key = NicknameNormalizer.normalize(player.name) ?: return
+        val (holderUuid, oldNickname) = runCatching {
+            plugin.storage.findNicknameHolder(key, player.uniqueId)
+        }.getOrElse {
+            plugin.logger.warning("실명 충돌 검사 실패 (${player.name}): ${it.message}")
+            null
+        } ?: return
+
+        plugin.logger.info("실명 '${player.name}' 과 겹쳐 닉네임 '$oldNickname' 을 해제합니다.")
+
+        val online = Bukkit.getPlayer(holderUuid)
+        if (online != null) {
+            Sched.entity(plugin, online) { releaseNickname(online, oldNickname) }
+            return
+        }
+
+        // 오프라인이면 캐시에 없을 수 있다. 임시 로드해 값을 비우고 바로 저장한다.
+        val profile = plugin.profiles.cached(holderUuid)
+            ?: runCatching { plugin.storage.loadProfile(holderUuid, "") }.getOrNull()
+            ?: return
+        profile.nickname = null
+        profile.nicknameResetNotice = oldNickname
+        profile.markDirty()
+        if (plugin.profiles.isCached(profile)) plugin.profiles.save(profile) else plugin.profiles.persist(profile)
+    }
+
+    /** 접속 중인 대상의 닉네임을 즉시 해제하고 알린다. 대상 소유 스레드에서 호출할 것. */
+    private fun releaseNickname(holder: Player, oldNickname: String) {
+        val profile = plugin.profiles.of(holder) ?: return
+        applyNickname(holder, profile, null, touchCooldown = false)
+        plugin.messages.send(holder, "nickname.forced-reset", "nickname" to Text.mini(oldNickname))
+    }
+
+    /**
+     * 오프라인 중에 닉네임이 강제 해제됐다면 지금 알린다.
+     *
+     * 접속 처리에서 호출한다. 알린 뒤에는 표시를 비워 다시 뜨지 않게 한다.
+     */
+    fun deliverPendingNotice(player: Player) {
+        val profile = plugin.profiles.of(player) ?: return
+        val notice = profile.nicknameResetNotice ?: return
+        profile.nicknameResetNotice = null
+        profile.markDirty()
+        plugin.profiles.save(profile)
+        plugin.messages.send(player, "nickname.forced-reset", "nickname" to Text.mini(notice))
     }
 
     /** 실제 적용. 관리자 명령도 이 경로를 쓴다(비용 없이 바로 이벤트→적용). */

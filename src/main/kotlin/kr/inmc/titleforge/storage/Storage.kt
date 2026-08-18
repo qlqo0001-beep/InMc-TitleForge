@@ -45,6 +45,15 @@ interface Storage {
 
     fun isNicknameTaken(nickname: String, except: UUID?): Boolean
 
+    /**
+     * 주어진 정규화 키를 닉네임으로 쓰고 있는 **다른** 플레이어를 찾는다.
+     *
+     * 실명이 N 인 계정이 접속했을 때, 닉네임 N 을 선점하고 있는 사람을 찾아내는 용도다.
+     *
+     * @return 그 사람의 uuid 와 현재 닉네임. 없으면 null.
+     */
+    fun findNicknameHolder(normalized: String, except: UUID): Pair<UUID, String>?
+
     /** 저장된 모든 플레이어에게 지급. 지급된 행 수를 반환. */
     fun grantToAll(type: BadgeType, id: String, expiresAt: Long): Int
 

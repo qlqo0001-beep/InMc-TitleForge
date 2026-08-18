@@ -12,6 +12,7 @@ import kr.inmc.titleforge.display.TablistService
 import kr.inmc.titleforge.display.TokenRenderer
 import kr.inmc.titleforge.gui.Menu
 import kr.inmc.titleforge.hook.MMOItemsHook
+import kr.inmc.titleforge.hook.MetricsHook
 import kr.inmc.titleforge.hook.MythicLibHook
 import kr.inmc.titleforge.hook.PlaceholderService
 import kr.inmc.titleforge.hook.VaultHook
@@ -97,6 +98,8 @@ class TitleForgePlugin : JavaPlugin() {
 
     private var autosaveTask: ScheduledTask? = null
 
+    private var metrics: MetricsHook? = null
+
     private companion object {
         const val STATS_FILE = "stats.yml"
     }
@@ -141,6 +144,9 @@ class TitleForgePlugin : JavaPlugin() {
         nametags.cleanupOrphans()
         ticker.start()
 
+        // 다른 훅이 다 붙은 뒤에 시작해야 연동 사용 여부가 정확히 잡힌다.
+        metrics = MetricsHook(this).also { it.start() }
+
         // 리로드 후 이미 접속해 있는 플레이어 복구
         for (player in Bukkit.getOnlinePlayers()) {
             Sched.async(this) {
@@ -156,6 +162,8 @@ class TitleForgePlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
+        metrics?.stop()
+        metrics = null
         autosaveTask?.cancel()
         autosaveTask = null
         if (::ticker.isInitialized) ticker.stop()

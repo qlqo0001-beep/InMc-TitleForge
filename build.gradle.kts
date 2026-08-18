@@ -23,6 +23,8 @@ dependencies {
     compileOnly("com.github.MilkBowl:VaultAPI:1.7") { isTransitive = false }
 
     // 셰이딩 대상
+    // bStats 는 relocate 하지 않으면 로드를 거부한다 (아래 shadowJar 설정 참고).
+    implementation("org.bstats:bstats-bukkit:3.1.0")
     implementation("com.zaxxer:HikariCP:7.0.2")
     implementation("org.xerial:sqlite-jdbc:3.50.3.0")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.4")
@@ -67,6 +69,9 @@ tasks {
         archiveClassifier.set("")
         // Hikari 만 relocate. JDBC 드라이버는 드라이버 이름 문자열 로딩과 충돌하지 않도록 그대로 둡니다.
         relocate("com.zaxxer.hikari", "kr.inmc.titleforge.lib.hikari")
+        // bStats 는 relocate 가 **필수**입니다. 안 하면 다른 플러그인의 bStats 와 충돌하고,
+        // 라이브러리 자체가 relocate 여부를 검사해 예외를 던집니다.
+        relocate("org.bstats", "kr.inmc.titleforge.lib.bstats")
         exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
         mergeServiceFiles()
     }

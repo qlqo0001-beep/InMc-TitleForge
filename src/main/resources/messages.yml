@@ -89,6 +89,8 @@ nickname:
   changed: '<green>닉네임이 <white><nickname></white> <green>(으)로 변경되었습니다.'
   changed-other: '<green><white><target></white> <green>의 닉네임을 <white><nickname></white> <green>(으)로 설정했습니다.'
   reset: '<yellow>닉네임이 초기화되었습니다.'
+  no-nickname: '<yellow>설정된 닉네임이 없습니다. <gray>이미 원래 아이디를 쓰고 있습니다.'
+  forced-reset: '<red>닉네임 <white><nickname></white> <red>이(가) 같은 이름의 실제 플레이어와 겹쳐 해제되었습니다. <gray>다른 닉네임으로 다시 설정해 주세요.'
   reset-other: '<yellow><white><target></white> <yellow>의 닉네임을 초기화했습니다.'
   cooldown-reset: '<green><white><target></white> <green>의 닉네임 변경 쿨타임을 초기화했습니다.'
   cooldown-reset-all: '<green>전체 <white><count></white>명의 닉네임 변경 쿨타임을 초기화했습니다.'

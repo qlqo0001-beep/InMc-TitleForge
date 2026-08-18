@@ -7,6 +7,7 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent
 import org.bukkit.event.player.PlayerJoinEvent
+import org.bukkit.event.player.PlayerChangedWorldEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.event.player.PlayerTeleportEvent
@@ -47,6 +48,11 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
         // 오프라인 동안 만료된 항목을 먼저 정리한다.
         plugin.profiles.sweepExpired(profile)
         plugin.statApplier.apply(player, profile.totalStats)
+
+        // 오프라인 중에 닉네임이 강제 해제됐다면 지금 알린다.
+        plugin.nicknames.deliverPendingNotice(player)
+        // 내 실제 아이디를 닉네임으로 선점한 사람이 있으면 풀어 준다 (DB 조회라 비동기).
+        Sched.async(plugin) { plugin.nicknames.enforceRealNameOwnership(player) }
         plugin.nameDisplay.refresh(player)
     }
 
@@ -61,6 +67,18 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     fun onTeleport(event: PlayerTeleportEvent) {
+        plugin.nametags.detachFor(event.player)
+    }
+
+    /**
+     * 월드가 실제로 바뀐 뒤 이름표를 다시 만든다.
+     *
+     * [PlayerTeleportEvent] 가 대부분의 경로를 덮지만, 포탈·엔드 귀환·다른 플러그인의
+     * 직접 이동처럼 그 이벤트를 거치지 않거나 취소·재발급되는 경우가 있다. 이동이 **끝난 뒤**
+     * 한 번 더 확인해 두면 옛 월드에 이름표가 남는 상황을 확실히 막을 수 있다.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onWorldChange(event: PlayerChangedWorldEvent) {
         plugin.nametags.detachFor(event.player)
     }
 
