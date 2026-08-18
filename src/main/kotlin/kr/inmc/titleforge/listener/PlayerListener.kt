@@ -10,7 +10,6 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerChangedWorldEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerRespawnEvent
-import org.bukkit.event.player.PlayerTeleportEvent
 
 /**
  * 접속/퇴장 처리.
@@ -56,36 +55,15 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
         plugin.nameDisplay.refresh(player)
     }
 
-    /**
-     * 이동 직전에 이름표 엔티티를 떼어낸다.
-     *
-     * 승객이 붙어 있는 플레이어는 **차원 간 텔레포트가 실패한다**(Paper 문서 명시).
-     * 이름표 하나 때문에 다른 플러그인의 `/warp`·`/home` 이 조용히 실패하지 않도록,
-     * 실제 이동 로직이 돌기 전인 [EventPriority.LOWEST] 에서 먼저 분리한다.
-     * 같은 월드 이동에서도 승객 관계는 기본적으로 유지되지 않으므로 어차피 다시 붙여야 한다.
-     * 재생성은 표시 갱신 티커가 다음 주기에 알아서 처리한다.
-     */
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-    fun onTeleport(event: PlayerTeleportEvent) {
-        plugin.nametags.detachFor(event.player)
-    }
-
-    /**
-     * 월드가 실제로 바뀐 뒤 이름표를 다시 만든다.
-     *
-     * [PlayerTeleportEvent] 가 대부분의 경로를 덮지만, 포탈·엔드 귀환·다른 플러그인의
-     * 직접 이동처럼 그 이벤트를 거치지 않거나 취소·재발급되는 경우가 있다. 이동이 **끝난 뒤**
-     * 한 번 더 확인해 두면 옛 월드에 이름표가 남는 상황을 확실히 막을 수 있다.
-     */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onWorldChange(event: PlayerChangedWorldEvent) {
-        plugin.nametags.detachFor(event.player)
+        plugin.nametags.rebuildFor(event.player)
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     fun onRespawn(event: PlayerRespawnEvent) {
         // 리스폰하면 엔티티가 남아도 승객 관계가 끊긴다. 확실히 지우고 다시 만들게 한다.
-        plugin.nametags.detachFor(event.player)
+        plugin.nametags.rebuildFor(event.player)
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

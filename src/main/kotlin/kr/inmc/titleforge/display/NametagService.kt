@@ -6,13 +6,12 @@ import kr.inmc.titleforge.util.Sched
 import kr.inmc.titleforge.util.Text
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.Color
 import org.bukkit.entity.Display
 import org.bukkit.entity.Player
 import org.bukkit.entity.TextDisplay
 import org.bukkit.scoreboard.Team
-import org.bukkit.util.Transformation
-import org.joml.Vector3f
 import java.util.EnumMap
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -29,10 +28,12 @@ import java.util.concurrent.ConcurrentHashMap
  * 엔티티 단위로만 숨길 수 있으므로 [Layer.SHARED](모두에게)와
  * [Layer.OTHERS](본인에게는 숨김) 두 개로 나눈다. 둘은 같은 부착점에 타므로 높이를 달리 준다.
  *
- * ### 텔레포트
- * 승객이 붙어 있는 플레이어는 **차원 간 텔레포트가 실패한다**(Paper 문서 명시).
- * 이름표 때문에 다른 플러그인의 `/warp` 가 조용히 실패하면 안 되므로,
- * [detachFor] 로 이동 직전에 떼어내고 다음 티커 주기에 자동으로 다시 붙인다.
+ * ### 왜 승객으로 태우지 않는가
+ * 예전에는 `addPassenger` 로 플레이어에 태웠다. 그러면 치장 플러그인이 붙인 승객과 세로로
+ * **쌓여서** 이름표가 뜨거나 치장 위치가 밀리고, 승객이 있는 플레이어는 차원 이동에도
+ * 제약을 받는다. 지금은 독립 엔티티로 띄우고 [follow] 가 좌표를 따라가게 한다.
+ * 이동 패킷은 서버의 엔티티 트래커가 추적 범위 안의 뷰어에게만 델타로 보내며,
+ * `teleportDuration` 보간 덕분에 갱신 주기를 늘려도 부드럽다.
  *
  * ### 실제로 보이는 사람에게만 표시
  * 이름표는 플레이어에 탑승한 위치에 뜨는데, 그 위치가 몸 전체를 가리는 지형보다 높이
@@ -77,9 +78,6 @@ class NametagService(private val plugin: TitleForgePlugin) {
      */
     private val positions = ConcurrentHashMap<UUID, Pos>()
 
-    /** 텔레포트가 끝날 때까지 이름표 재생성을 막는 유예. */
-    private val teleporting = TeleportGrace(TELEPORT_GRACE_MS)
-
     private class Pos(val world: UUID, val x: Double, val y: Double, val z: Double) {
         fun withinSquared(other: Pos, rangeSq: Double): Boolean {
             if (world != other.world) return false
@@ -115,29 +113,22 @@ class NametagService(private val plugin: TitleForgePlugin) {
         hiddenFrom.remove(player.uniqueId)
         for (viewers in hiddenFrom.values) viewers.remove(player.uniqueId)
         positions.remove(player.uniqueId)
-        teleporting.release(player.uniqueId)
     }
 
     fun removeAll() {
         handles.keys.toList().forEach { remove(it, immediate = true) }
         hiddenFrom.clear()
         positions.clear()
-        teleporting.clear()
     }
 
     /**
-     * 텔레포트 직전에 승객 관계를 끊는다.
+     * 지금 있는 이름표를 지워 다음 갱신 주기에 새로 만들게 한다.
      *
-     * 엔티티를 지우기만 하면 되므로 다음 주기의 [refresh] 가 새 위치에 다시 만들어 붙인다.
+     * 월드 이동·리스폰처럼 좌표가 크게 튀는 경우에 쓴다. 승객이 아니므로 이동 자체를
+     * 막을 일이 없고, 평상시에는 [follow] 가 따라가므로 여기까지 올 필요가 없다.
      */
-    fun detachFor(player: Player) {
-        // 텔레포트 이벤트는 **실제 이동 전에** 온다. 여기서 떼어내도 표시 갱신 티커가
-        // (기본 매 틱) 이동 직전에 다시 붙여 버리면, 그 엔티티가 이동과 함께 분리되어
-        // 떠나온 자리에 그대로 남는다. 이동이 끝날 때까지 재생성을 잠깐 막는다.
-        teleporting.mark(player.uniqueId)
+    fun rebuildFor(player: Player) {
         remove(player.uniqueId, immediate = true)
-        // 이동이 끝난 다음 틱에 바로 풀어 준다. 만료 시각은 이 콜백이 유실됐을 때의 보험이다.
-        Sched.entity(plugin, player) { teleporting.release(player.uniqueId) }
     }
 
     /**
@@ -165,9 +156,6 @@ class NametagService(private val plugin: TitleForgePlugin) {
         // 여기서 복사해 둔 값이 [refreshVisibility] 의 후보군 사전 필터에 쓰인다.
         val location = player.location
         positions[player.uniqueId] = Pos(player.world.uid, location.x, location.y, location.z)
-
-        // 이동이 끝나기 전에 다시 붙이면 떠나온 자리에 이름표가 남는다.
-        if (teleporting.isActive(player.uniqueId)) return
 
         if (!settings.enabled || !settings.hasAnyLine) {
             if (handles.containsKey(player.uniqueId)) {
@@ -198,14 +186,13 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
         val cacheKey = content.cacheKey
 
-        // 살아 있고 **아직 이 플레이어에 타고 있는** 엔티티만 재사용한다.
-        // 텔레포트로 승객 관계가 끊기면 여기서 걸러져 새로 만들어진다.
+        // 살아 있고 **같은 월드에 있는** 엔티티만 재사용한다.
+        // 차원을 넘어가면 예전 월드에 남으므로 여기서 걸러져 새 월드에 다시 만들어진다.
         val cached = handle.displays[layer]
-        val existing = cached?.takeIf { it.isValid && it.vehicle?.uniqueId == player.uniqueId }
+        val existing = cached?.takeIf { it.isValid && it.world == player.world }
 
         // 재사용할 수 없게 된 엔티티는 **반드시 지우고** 넘어간다.
-        // 참조만 덮어쓰면 승객 관계가 끊긴 그 엔티티가 월드에 그대로 남는다.
-        // 텔레포트 직후 예전 자리에 이름표가 떠 있던 원인이 이것이었다.
+        // 참조만 덮어쓰면 그 엔티티가 예전 월드에 그대로 남는다.
         if (cached != null && existing == null) {
             handle.displays.remove(layer)
             handle.rendered.remove(layer)
@@ -223,6 +210,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
             handle.rendered.remove(layer)
             return false
         }
+
+        // 승객이 아니므로 위치를 직접 따라가게 한다. 실제로 움직였을 때만 옮긴다.
+        follow(player, display, layer)
 
         // 캐시 갱신은 엔티티를 확보한 **뒤에** 한다. 새로 만든 엔티티는 내용이 같아도 한 번 써야 한다.
         if (existing != null && handle.rendered[layer] == cacheKey) return true
@@ -360,8 +350,34 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
     }
 
+    /**
+     * 이름표가 떠 있어야 할 위치.
+     *
+     * 승객이 아니라 **독립 엔티티**이므로 높이를 좌표로 직접 준다.
+     * [Player.getHeight] 를 쓰면 웅크리기·수영으로 키가 줄 때도 머리 위에 붙어 따라온다.
+     */
+    private fun anchorOf(player: Player, layer: Layer): Location =
+        player.location.let { base ->
+            Location(base.world, base.x, base.y + player.height + heightOf(layer), base.z)
+        }
+
+    /**
+     * 플레이어를 따라 이동시킨다.
+     *
+     * 실제로 움직였을 때만 옮긴다. 서 있으면 패킷이 아예 발생하지 않는다.
+     * 이동 패킷 자체는 서버의 엔티티 트래커가 만든다 — 추적 범위 안의 뷰어에게만,
+     * 전체 좌표가 아닌 **델타**로 나간다. 몹 한 마리와 같은 비용이다.
+     */
+    private fun follow(player: Player, display: TextDisplay, layer: Layer) {
+        val target = anchorOf(player, layer)
+        val current = display.location
+        if (current.world == target.world && current.distanceSquared(target) < FOLLOW_EPSILON_SQ) return
+        // 엔티티를 소유한 리전 스레드에서만 옮긴다(Folia).
+        Sched.entity(plugin, display) { runCatching { display.teleport(target) } }
+    }
+
     private fun spawn(player: Player, layer: Layer): TextDisplay? = runCatching {
-        val display = player.world.spawn(player.location, TextDisplay::class.java) { entity ->
+        val display = player.world.spawn(anchorOf(player, layer), TextDisplay::class.java) { entity ->
             entity.isPersistent = false
             entity.scoreboardTags.add(layer.tag)
             entity.billboard = Display.Billboard.CENTER
@@ -374,15 +390,13 @@ class NametagService(private val plugin: TitleForgePlugin) {
             } else {
                 Color.fromARGB(0)
             }
-            val current = entity.transformation
-            entity.transformation = Transformation(
-                Vector3f(0f, heightOf(layer).toFloat(), 0f),
-                current.leftRotation,
-                current.scale,
-                current.rightRotation,
-            )
+            // 위치 갱신 사이를 클라이언트가 부드럽게 이어 준다.
+            // 이게 있어야 갱신 주기를 늘려도 뚝뚝 끊겨 보이지 않는다.
+            entity.teleportDuration = plugin.settings.display.refreshTicks.toInt().coerceIn(1, 59)
+            // 높이는 좌표(anchorOf)로 주므로 변형은 건드리지 않는다.
         }
-        player.addPassenger(display)
+        // **승객으로 태우지 않는다.** 태우면 치장 플러그인이 붙인 승객과 세로로 쌓여
+        // 이름표가 뜨거나 치장 위치가 밀리고, 차원 이동에도 제약이 생긴다.
         // 본인 전용 숨김. 인장 묶음은 본인도 봐야 하므로 건드리지 않는다.
         if (layer == Layer.OTHERS) player.hideEntity(plugin, display)
         display
@@ -436,11 +450,12 @@ class NametagService(private val plugin: TitleForgePlugin) {
         const val CANDIDATE_MARGIN = 32.0
 
         /**
-         * 텔레포트 유예 시간(ms).
+         * 이 거리(제곱) 안이면 안 옮긴다.
          *
-         * 정상 경로에서는 이동 직후 다음 틱에 곧바로 해제되므로 이 값까지 기다리지 않는다.
-         * 해제 콜백이 유실됐을 때 이름표가 영영 안 돌아오는 것만 막는 보험이다.
+         * 서 있는 플레이어의 이름표를 매 틱 teleport 하면 트래커가 의미 없는 이동 패킷을
+         * 만든다. 눈에 안 보일 만큼의 흔들림은 무시한다. (0.01블록)
          */
-        const val TELEPORT_GRACE_MS = 1000L
+        const val FOLLOW_EPSILON_SQ = 0.0001
+
     }
 }
