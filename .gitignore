@@ -9,6 +9,7 @@ out/
 .kotlin/
 local.properties
 run/
-src.zip
+# 저장소 스냅샷 아카이브는 커밋하지 않습니다
+*.zip
 __pycache__/
 *.pyc
