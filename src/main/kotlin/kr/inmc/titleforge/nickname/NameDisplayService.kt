@@ -93,6 +93,10 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
         val profile = plugin.profiles.of(player)
         val plate = nameplate(profile, player.name, player)
 
+        // 명령어 탭 완성·인자 치환이 쓰는 색인도 여기서 따라온다. 접속·닉네임 변경·칭호 장착·
+        // 리로드 복구가 전부 이 함수를 지나므로, 호출부를 여기저기 두지 않아도 최신으로 유지된다.
+        plugin.nicknameIndex.track(player)
+
         if (settings.displayName) player.displayName(plate)
         if (settings.tab) player.playerListName(plate)
         // 머리 위 여러 줄 이름표는 display.NametagService 가 담당한다.
@@ -101,6 +105,7 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
 
     fun cleanup(player: Player) {
         plugin.nametags.handleQuit(player)
+        plugin.nicknameIndex.forget(player.uniqueId)
     }
 
     // ── 채팅 (기본 꺼짐) ───────────────────────────────────────────────
