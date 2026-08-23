@@ -166,6 +166,17 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
     }
 
     /**
+     * 접속 중인 대상을 찾는다. **실제 아이디와 닉네임 둘 다** 받는다.
+     *
+     * 명령어 인자를 통째로 되돌리는 [kr.inmc.titleforge.nickname.NicknameCommandBridge] 는
+     * 자기 자신을 건드리지 않는다 — `/it create title 나인` 의 칭호 ID 처럼 플레이어가 아닌
+     * 자리에도 닉네임과 같은 값이 정상적으로 들어오기 때문이다. 그래서 **대상 자리에서만**
+     * 여기서 직접 풀어 준다.
+     */
+    private fun onlineTarget(name: String): Player? =
+        Bukkit.getPlayerExact(plugin.nicknameIndex.realNameOf(name) ?: name)
+
+    /**
      * 이름으로 프로필을 찾아 [action] 을 메인 스레드에서 실행하고 저장까지 처리한다.
      * 오프라인 플레이어도 대상이 된다.
      */
@@ -216,7 +227,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.no-permission")
             return
         }
-        val target = Bukkit.getPlayerExact(targetName)
+        val target = onlineTarget(targetName)
         if (target == null) {
             messages.send(sender, "player.not-found", "name" to targetName)
             return
@@ -496,7 +507,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.unknown-command")
             return
         }
-        val target = Bukkit.getPlayerExact(targetName)
+        val target = onlineTarget(targetName)
         if (target == null) {
             messages.send(sender, "player.not-found", "name" to targetName)
             return
@@ -517,7 +528,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.unknown-command")
             return
         }
-        val target = Bukkit.getPlayerExact(targetName)
+        val target = onlineTarget(targetName)
         if (target == null) {
             messages.send(sender, "player.not-found", "name" to targetName)
             return

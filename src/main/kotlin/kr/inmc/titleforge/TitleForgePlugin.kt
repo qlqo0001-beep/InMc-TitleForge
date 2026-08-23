@@ -20,6 +20,8 @@ import kr.inmc.titleforge.listener.PlayerListener
 import kr.inmc.titleforge.input.ChatTextInput
 import kr.inmc.titleforge.input.DialogTextInput
 import kr.inmc.titleforge.nickname.NameDisplayService
+import kr.inmc.titleforge.nickname.NicknameCommandBridge
+import kr.inmc.titleforge.nickname.NicknameIndex
 import kr.inmc.titleforge.nickname.NicknameService
 import kr.inmc.titleforge.player.ProfileManager
 import kr.inmc.titleforge.rank.RankService
@@ -65,6 +67,10 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var nicknames: NicknameService
         private set
 
+    /** 접속자 "아이디 ↔ 닉네임" 색인. 명령어 탭 완성·인자 치환이 이것만 읽는다. */
+    lateinit var nicknameIndex: NicknameIndex
+        private set
+
     lateinit var dialogInput: DialogTextInput
         private set
 
@@ -86,6 +92,8 @@ class TitleForgePlugin : JavaPlugin() {
 
     lateinit var placeholders: PlaceholderService
         private set
+
+    private lateinit var commandBridge: NicknameCommandBridge
 
     private lateinit var ticker: DisplayTicker
 
@@ -121,6 +129,8 @@ class TitleForgePlugin : JavaPlugin() {
         badgeService = BadgeService(this)
         nameDisplay = NameDisplayService(this)
         nicknames = NicknameService(this)
+        nicknameIndex = NicknameIndex(this)
+        commandBridge = NicknameCommandBridge(this)
         dialogInput = DialogTextInput(this)
         chatInput = ChatTextInput(this)
         nametags = NametagService(this)
@@ -192,6 +202,8 @@ class TitleForgePlugin : JavaPlugin() {
         tokens.clear()
         nametags.refreshAll()
         tablist.clear()
+        // 제외 명령어 목록이 바뀌었을 수 있으니 "여기가 플레이어 이름 칸" 기억도 버린다.
+        commandBridge.clear()
     }
 
     /**
@@ -247,6 +259,7 @@ class TitleForgePlugin : JavaPlugin() {
         pm.registerEvents(Menu.MenuListener(), this)
         pm.registerEvents(nameDisplay, this)
         pm.registerEvents(chatInput, this)
+        pm.registerEvents(commandBridge, this)
     }
 
     private fun registerCommands() {

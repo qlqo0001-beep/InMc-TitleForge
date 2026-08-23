@@ -72,6 +72,20 @@ class Settings private constructor(
         val milestones: List<Pair<Int, Map<String, Double>>>,
     )
 
+    /**
+     * 다른 플러그인 명령어에서 닉네임을 쓰게 할지.
+     *
+     * @param suggest 플레이어 이름을 제안하는 자리에 닉네임도 함께 띄운다.
+     * @param resolve 닉네임으로 들어온 인자를 실행 직전에 실제 아이디로 되돌린다.
+     *   꺼 두면 [suggest] 로 뜬 닉네임을 골라도 대부분의 플러그인이 대상을 찾지 못한다.
+     * @param excludedCommands [resolve] 에서 제외할 명령어 이름(소문자).
+     */
+    class CommandBridgeSettings(
+        val suggest: Boolean,
+        val resolve: Boolean,
+        val excludedCommands: Set<String>,
+    )
+
     class NicknameSettings(
         val enabled: Boolean,
         val inputMode: InputMode,
@@ -91,6 +105,8 @@ class Settings private constructor(
         val economyAmount: Double,
         /** 비용 아이템 정의. 여러 개를 켜면 **하나만 만족해도** 지불로 인정한다. */
         val costItems: List<CostItem>,
+        /** 다른 플러그인 명령어와의 연동. */
+        val commandBridge: CommandBridgeSettings,
     ) {
         /** 허용 문자 정규식 (전체 문자열 매칭). */
         val pattern: Regex = buildPattern()
@@ -277,6 +293,13 @@ class Settings private constructor(
                 economyEnabled = config.getBoolean("nickname.cost.economy.enabled", false),
                 economyAmount = config.getDouble("nickname.cost.economy.amount", 0.0).coerceAtLeast(0.0),
                 costItems = readCostItems(config.getConfigurationSection("nickname.cost.item")),
+                commandBridge = CommandBridgeSettings(
+                    suggest = config.getBoolean("nickname.command-bridge.suggest", true),
+                    resolve = config.getBoolean("nickname.command-bridge.resolve", true),
+                    excludedCommands = config.getStringList("nickname.command-bridge.excluded-commands")
+                        .map { it.lowercase() }
+                        .toSet(),
+                ),
             )
 
             val display = DisplaySettings(
