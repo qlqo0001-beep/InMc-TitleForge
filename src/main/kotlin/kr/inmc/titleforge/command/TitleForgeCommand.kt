@@ -20,10 +20,11 @@ import kr.inmc.titleforge.util.Sched
 import kr.inmc.titleforge.util.Text
 import org.bukkit.Bukkit
 import org.bukkit.Material
-import org.bukkit.command.Command
-import org.bukkit.command.CommandExecutor
+import io.papermc.paper.command.brigadier.BasicCommand
+import io.papermc.paper.command.brigadier.CommandSourceStack
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import org.bukkit.command.CommandSender
-import org.bukkit.command.TabCompleter
+import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.entity.Player
 
 /**
@@ -32,11 +33,33 @@ import org.bukkit.entity.Player
  * 인자 없이 실행하면 권한에 맞는 도움말을 출력한다.
  * 오프라인 대상 작업은 전부 비동기 조회 후 메인 스레드에서 반영한다 (맞춤 지침 7.1-1).
  */
-class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor, TabCompleter {
+class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
 
     private val messages get() = plugin.messages
 
-    override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
+    /**
+     * paper-plugin.yml 에는 `commands:` 절이 없다. 명령어는 Paper 의 등록기로만 들어간다.
+     */
+    fun register(owner: JavaPlugin) {
+        owner.lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
+            event.registrar().register(
+                "it",
+                "칭호/인장/닉네임 명령어",
+                listOf("titleforge", "tf", "칭호"),
+                this,
+            )
+        }
+    }
+
+    override fun execute(source: CommandSourceStack, args: Array<String>) {
+        // 반환값은 쓰지 않는다 - 사용법 출력은 각 분기가 직접 한다.
+        run(source.sender, args)
+    }
+
+    override fun suggest(source: CommandSourceStack, args: Array<String>): Collection<String> =
+        complete(source.sender, args)
+
+    private fun run(sender: CommandSender, args: Array<out String>): Boolean {
         if (args.isEmpty()) {
             // 플레이어는 바로 메뉴, 콘솔은 창을 열 수 없으니 도움말.
             if (sender is Player) openMainMenu(sender) else sendHelp(sender)
@@ -166,6 +189,17 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
     }
 
     /**
+     * 접속 중인 대상을 찾는다. **실제 아이디와 닉네임 둘 다** 받는다.
+     *
+     * 명령어 인자를 통째로 되돌리는 [kr.inmc.titleforge.nickname.NicknameCommandBridge] 는
+     * 자기 자신을 건드리지 않는다 — `/it create title 나인` 의 칭호 ID 처럼 플레이어가 아닌
+     * 자리에도 닉네임과 같은 값이 정상적으로 들어오기 때문이다. 그래서 **대상 자리에서만**
+     * 여기서 직접 풀어 준다.
+     */
+    private fun onlineTarget(name: String): Player? =
+        Bukkit.getPlayerExact(plugin.nicknameIndex.realNameOf(name) ?: name)
+
+    /**
      * 이름으로 프로필을 찾아 [action] 을 메인 스레드에서 실행하고 저장까지 처리한다.
      * 오프라인 플레이어도 대상이 된다.
      */
@@ -216,7 +250,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.no-permission")
             return
         }
-        val target = Bukkit.getPlayerExact(targetName)
+        val target = onlineTarget(targetName)
         if (target == null) {
             messages.send(sender, "player.not-found", "name" to targetName)
             return
@@ -496,7 +530,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.unknown-command")
             return
         }
-        val target = Bukkit.getPlayerExact(targetName)
+        val target = onlineTarget(targetName)
         if (target == null) {
             messages.send(sender, "player.not-found", "name" to targetName)
             return
@@ -517,7 +551,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
             messages.send(sender, "general.unknown-command")
             return
         }
-        val target = Bukkit.getPlayerExact(targetName)
+        val target = onlineTarget(targetName)
         if (target == null) {
             messages.send(sender, "player.not-found", "name" to targetName)
             return
@@ -656,12 +690,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : CommandExecutor,
 
     // ── 탭 완성 ────────────────────────────────────────────────────────
 
-    override fun onTabComplete(
-        sender: CommandSender,
-        command: Command,
-        label: String,
-        args: Array<out String>,
-    ): List<String> {
+    private fun complete(sender: CommandSender, args: Array<out String>): List<String> {
         val admin = sender.hasPermission(ADMIN)
         val result: List<String> = when (args.size) {
             0, 1 -> USER_SUBCOMMANDS + if (admin) ADMIN_SUBCOMMANDS else emptyList()

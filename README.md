@@ -43,7 +43,7 @@
 
 | 플러그인 | 없을 때 |
 |---|---|
-| `PlaceholderAPI` | `%titleforge_...%` 제공 및 외부 플레이스홀더 치환이 비활성 |
+| `PlaceholderAPI` | 다른 플러그인에 `%titleforge_...%` 를 내주지 못하고 **남의** 플레이스홀더를 못 푼다. 이 플러그인의 이름표·탭리스트에 쓴 `%titleforge_...%` · `%tf_...%` 는 PAPI 없이 풀린다 |
 | `Vault` | 닉네임 경제 비용이 자동 면제 |
 | `MythicLib` | MMO 스텟 35종은 값만 보관(API·플레이스홀더로는 노출). **바닐라 28종은 그대로 동작** |
 | `MMOItems` | MMOItems 비용 아이템을 획득할 수 없음 (태그 판별 자체는 가능) |
@@ -426,7 +426,7 @@ display:
 > 뷰어 × 대상 조합마다 1회이므로 인원이 많은 서버에서 `visibility-check-ticks` 를
 > 너무 짧게 잡지 마세요(기본 10틱 = 0.5초).
 
-### 내장 토큰 (15종)
+### 내장 토큰 (16종)
 
 이름표·탭리스트 모두 다른 플러그인의 `%플레이스홀더%` 와 같은 문법을 씁니다.
 
@@ -434,7 +434,11 @@ display:
 %tf_seal%  %tf_title%  %tf_nickname%  %tf_player%
 %tf_world% %tf_ping%   %tf_x% %tf_y% %tf_z%
 %tf_tps%   %tf_mspt%   %tf_online% %tf_max% %tf_time% %tf_date%
+%tf_balance%   기본 화폐 잔고("1,000원") — inmc-economy(core 화폐)가 먼저, 없으면 Vault
 ```
+
+`%titleforge_...%`(아래 PlaceholderAPI 절)도 이 플러그인의 이름표·탭리스트에서는 **PAPI 없이** 풀립니다.
+PAPI 는 남의 플레이스홀더(`%lands_…%` 등)와, 남의 플러그인에 우리 값을 내줄 때만 필요합니다.
 
 `%tf_tps%` · `%tf_mspt%` 는 임계값(`tps-good`/`tps-warn`/`mspt-good`/`mspt-warn`)에 따라
 색이 자동으로 바뀝니다. TPS·인원·시간처럼 전원이 같은 값을 보는 토큰은 주기마다
@@ -442,7 +446,7 @@ display:
 
 ### 플레이스홀더 재계산 주기
 
-토큰마다 재계산 주기를 밀리초 단위로 지정할 수 있습니다. `%javascript_biome%` 처럼
+토큰마다 재계산 주기를 밀리초 단위로 지정할 수 있습니다. JavaScript 스크립트(`%javascript_…%`)처럼
 무거운 외부 플레이스홀더를 매 틱 재평가하지 않도록, 지정한 주기가 지나기 전까지는
 캐시된 값을 재사용합니다.
 
@@ -451,7 +455,7 @@ placeholder-refresh-intervals:
   default-refresh-interval: 500
   '%player_x%': 50
   '%server_uptime%': 1000
-  '%javascript_biome%': 1000
+  '%titleforge_biome_mini%': 1000
 ```
 
 레거시 색 코드(`§a` 등)를 돌려주는 플레이스홀더(CMI 등)는 자동으로 MiniMessage
@@ -495,7 +499,7 @@ placeholder-refresh-intervals:
 /it player <플레이어>                           보유 현황 조회 · 지급/회수 GUI (오프라인 지원)
 /it checkitem                                  손에 든 아이템의 비용 아이템 인식 여부 진단
 /it admin                                      관리 GUI
-/it reload                                     config · messages · stats.yml 리로드
+/it reload                                     config · messages · stats.yml · places.yml 리로드
 ```
 
 `edit` 필드 값 참고 — `lore` 는 `|` 로 줄을 나눕니다.
@@ -552,14 +556,36 @@ placeholder-refresh-intervals:
 %titleforge_rank_title% / %titleforge_rank_seal%    내 수집 순위
 %titleforge_rank_top_<title|seal>_<n>%       n위 이름
 %titleforge_rank_top_<title|seal>_<n>_count% n위 보유 수
+%titleforge_world%              지금 있는 월드의 이름 (places.yml. 없으면 실제 월드 이름)
+%titleforge_world_id%           실제 월드 이름
+%titleforge_biome%              지금 있는 생물군계의 이름 (places.yml. 없으면 id)
+%titleforge_biome_id%           생물군계 id (예: terralith:arid_highlands)
 ```
 
 - `_mini` 접미사(`%titleforge_title_display_mini%`, `_seal_mini`, `_title_stat_mini`,
-  `_nickname_mini`)를 붙이면 MiniMessage 원문을 그대로 돌려줍니다.
+  `_nickname_mini`, `_world_mini`, `_biome_mini`)를 붙이면 MiniMessage 원문을 그대로 돌려줍니다.
 - `%titleforge_nickname%` 은 TAB·채팅 플러그인이 바로 해석할 수 있도록 레거시(`§`) 표기로
   나갑니다. 색이 없는 닉네임은 예전과 똑같은 평문입니다.
 - `<title|seal>` 자리에는 `t` `s` `칭호` `인장` 도 쓸 수 있고, 전부 대소문자를 가리지 않습니다.
 - 순위 관련 값은 캐시가 채워지기 전에는 빈 문자열을 돌려주고 비동기로 채웁니다.
+
+### 월드 · 생물군계 이름
+
+예전 PlaceholderAPI 스크립트 `world_name.js`(`%javascript_world_name%`)와 `biome.js`(`%javascript_biome%`)를
+대신합니다. 그 스크립트는 MiniMessage 원문을 돌려줬으므로 **그대로 바꿔 끼우려면 `_mini`** 를 쓰세요
+(`%titleforge_world_mini%` · `%titleforge_biome_mini%`). 레거시(`§`)가 필요한 곳은 접미사 없이.
+
+- 이름은 `places.yml` 에 있고 `/it admin` → **장소 이름**에서 고칩니다(좌클릭 정하기 · Shift+우클릭 지우기,
+  **지금 있는 곳** 버튼). 기본값은 두 스크립트의 월드 7개·생물군계 185개(바닐라·Terralith·Incendium·Nullscape)에
+  스크립트가 빠뜨린 4개(Terralith 2.6.2 의 `alpha_islands` · `alpha_islands_winter` · `deep_warm_ocean`, 바닐라 26.2 의
+  `sulfur_caves`)를 더한 189개입니다.
+- **기본 이름이 늘면 켤 때(`/it reload` 포함) 이미 깔린 `places.yml` 에도 자동으로 더해집니다.** 고친 이름은 그대로 두고,
+  지운 이름은 `''` 로 남겨 다시 생기지 않게 합니다(되살리려면 그 줄을 지우세요).
+- 생물군계는 네임스페이스를 뗀 이름(`arid_highlands`)으로 적으면 어느 데이터팩의 것이든 맞고, 전체 id 로 적은 것이 먼저입니다.
+- 월드는 대소문자를 가리지 않습니다. 이름에 점이 들어간 월드도 됩니다.
+- **비동기 호출자(TAB 등)에게는 마지막으로 읽은 위치를 줍니다.** 생물군계는 청크를 읽는 일이라 그 스레드에서 읽지 않고,
+  플레이어가 생물군계 칸(4×4×4)을 넘거나 순간이동·리스폰할 때 새로 읽습니다. 이 플레이스홀더를 한 번도 묻지 않으면
+  이동 사건에서 곧바로 돌아갑니다. 접속 직후 첫 비동기 호출은 빈칸이고 다음 틱에 채워집니다.
 
 **전부 메모리 캐시 조회**이므로 TAB 같은 플러그인이 초당 수십 번 호출해도 안전합니다.
 

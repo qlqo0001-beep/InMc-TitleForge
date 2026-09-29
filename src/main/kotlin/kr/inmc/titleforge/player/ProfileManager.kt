@@ -137,11 +137,14 @@ class ProfileManager(private val plugin: TitleForgePlugin) {
      * 온라인/캐시에 있으면 캐시를, 없으면 DB 에서 임시 로드한다(캐시에 넣지 않음).
      */
     fun resolveBlocking(name: String): PlayerProfile? {
-        Bukkit.getPlayerExact(name)?.let { online -> cache[online.uniqueId]?.let { return it } }
-        cache.values.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let { return it }
-        val uuid = runCatching { plugin.storage.findUuidByName(name) }.getOrNull() ?: return null
+        // 접속 중인 사람의 닉네임으로 지목했다면 실제 아이디로 바꿔서 찾는다.
+        // 색인은 불변 스냅샷이라 비동기에서 읽어도 안전하다.
+        val target = plugin.nicknameIndex.realNameOf(name) ?: name
+        Bukkit.getPlayerExact(target)?.let { online -> cache[online.uniqueId]?.let { return it } }
+        cache.values.firstOrNull { it.name.equals(target, ignoreCase = true) }?.let { return it }
+        val uuid = runCatching { plugin.storage.findUuidByName(target) }.getOrNull() ?: return null
         cache[uuid]?.let { return it }
-        return runCatching { plugin.storage.loadProfile(uuid, name) }.getOrNull()
+        return runCatching { plugin.storage.loadProfile(uuid, target) }.getOrNull()
     }
 
     /** [resolveBlocking] 로 얻은 프로필이 캐시에 없으면 즉시 저장해야 한다. */

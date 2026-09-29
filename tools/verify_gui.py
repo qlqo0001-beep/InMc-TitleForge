@@ -61,7 +61,7 @@ def read_all() -> str:
 
 MESSAGE_ROOTS = (
     "gui", "stat", "input", "badge", "nickname", "general", "player", "help",
-    "rank", "placeholder",
+    "rank", "placeholder", "place",
 )
 CONFIG_ROOTS = ("storage", "title", "seal", "nickname", "display", "gui", "rank", "debug")
 

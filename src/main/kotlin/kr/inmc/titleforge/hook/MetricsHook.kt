@@ -68,7 +68,7 @@ class MetricsHook(private val plugin: TitleForgePlugin) {
 
         // ── 선택 연동을 실제로 쓰는 비율 ──
         metrics.addCustomChart(SimplePie("hook_placeholderapi") { present("PlaceholderAPI") })
-        metrics.addCustomChart(SimplePie("hook_vault") { onOff(plugin.vault != null) })
+        metrics.addCustomChart(SimplePie("hook_vault") { onOff(plugin.economy.isEnabled) })
         metrics.addCustomChart(SimplePie("hook_mythiclib") { onOff(plugin.statApplier.mythicLib != null) })
         metrics.addCustomChart(SimplePie("hook_mmoitems") { present("MMOItems") })
 

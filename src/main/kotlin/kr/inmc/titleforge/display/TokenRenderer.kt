@@ -49,6 +49,9 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
 
     private val intervals get() = plugin.settings.display.placeholderIntervals
 
+    /** 이 플러그인의 `%titleforge_…%` — PlaceholderAPI 가 없어도 여기서 푼다. */
+    private val own = kr.inmc.titleforge.hook.TitleForgeValues(plugin)
+
     fun handleQuit(uuid: UUID) {
         playerCache.remove(uuid)
     }
@@ -121,12 +124,25 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
             return cached(globalCache, lower) { serverBuiltin(lower) }
         }
 
-        // 3) 나머지(외부 플레이스홀더)는 플레이어별로 캐시한다.
+        // 3) 자기 것(`%titleforge_…%`)과 잔고는 PAPI 없이 직접 — 없는 서버에서도 탭리스트가 비지 않게.
+        //    값이 바뀌는 주기는 외부 것과 같이 플레이어별 캐시로 다스린다.
+        val cache = playerCache.getOrPut(player.uniqueId) { ConcurrentHashMap() }
+        if (lower == "tf_balance") return cached(cache, lower) { balance(player) }
+        if (lower.startsWith(OWN_PREFIX)) {
+            return cached(cache, lower) {
+                // 모르는 이름이면 PAPI 에 넘긴다(다른 버전의 이 플러그인이 등록했을 수도 있다).
+                Text.fromLegacy(own.resolve(player, token.substring(OWN_PREFIX.length)) ?: plugin.placeholders.apply(player, raw))
+            }
+        }
+
+        // 4) 나머지(외부 플레이스홀더)는 플레이어별로 캐시한다.
         //    CMI 등은 레거시 색 코드(§a)를 돌려주는데 MiniMessage 가 이를 거부하므로
         //    끼워 넣기 전에 MiniMessage 표기로 바꾼다. 변환 결과째로 캐시된다.
-        val cache = playerCache.getOrPut(player.uniqueId) { ConcurrentHashMap() }
         return cached(cache, lower) { Text.fromLegacy(plugin.placeholders.apply(player, raw)) }
     }
+
+    /** 기본 화폐 잔고("1,000원"). 화폐 플러그인(core `Currencies`)이 먼저, 없으면 Vault. */
+    private fun balance(player: Player): String = plugin.economy.let { it.format(it.balance(player)) }
 
     private inline fun cached(cache: ConcurrentHashMap<String, Entry>, key: String, compute: () -> String): String {
         val now = System.currentTimeMillis()
@@ -196,6 +212,9 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
     internal companion object {
         /** 전 인원이 같은 값을 보는 토큰. 주기당 1회만 계산한다. */
         val SERVER_TOKENS = setOf("tf_tps", "tf_mspt", "tf_online", "tf_max", "tf_time", "tf_date")
+
+        /** 이 플러그인의 PAPI 이름. 같은 이름을 PAPI 없이도 푼다. */
+        const val OWN_PREFIX = "titleforge_"
 
         /**
          * 치환값 자리표시자 이름의 접두사.

@@ -97,6 +97,10 @@ class AdminMenu(
 
         button(navRow + 4, Gui.item(plugin, "gui.button.back", Material.OAK_DOOR)) { MainMenu(plugin, viewer).openLater() }
 
+        button(navRow + 1, Gui.item(plugin, "gui.button.places", Material.FILLED_MAP)) {
+            PlaceNameMenu(plugin, viewer, kr.inmc.titleforge.place.PlaceNames.Kind.WORLD).openLater()
+        }
+
         button(navRow + 6, Gui.item(plugin, "gui.button.create", Material.WRITABLE_BOOK, placeholders = arrayOf("type" to type.display))) {
             val creating = type
             val prompt = plugin.messages.prefix().append(plugin.messages.component("input.prompt-badge-id"))

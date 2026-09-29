@@ -15,12 +15,16 @@ import kr.inmc.titleforge.hook.MMOItemsHook
 import kr.inmc.titleforge.hook.MetricsHook
 import kr.inmc.titleforge.hook.MythicLibHook
 import kr.inmc.titleforge.hook.PlaceholderService
-import kr.inmc.titleforge.hook.VaultHook
+import kr.inmc.core.integration.EconomyHook
 import kr.inmc.titleforge.listener.PlayerListener
 import kr.inmc.titleforge.input.ChatTextInput
 import kr.inmc.titleforge.input.DialogTextInput
 import kr.inmc.titleforge.nickname.NameDisplayService
+import kr.inmc.titleforge.nickname.NicknameCommandBridge
+import kr.inmc.titleforge.nickname.NicknameIndex
 import kr.inmc.titleforge.nickname.NicknameService
+import kr.inmc.titleforge.place.PlaceNames
+import kr.inmc.titleforge.place.PlaceTracker
 import kr.inmc.titleforge.player.ProfileManager
 import kr.inmc.titleforge.rank.RankService
 import kr.inmc.titleforge.stat.StatApplier
@@ -65,6 +69,10 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var nicknames: NicknameService
         private set
 
+    /** 접속자 "아이디 ↔ 닉네임" 색인. 명령어 탭 완성·인자 치환이 이것만 읽는다. */
+    lateinit var nicknameIndex: NicknameIndex
+        private set
+
     lateinit var dialogInput: DialogTextInput
         private set
 
@@ -87,9 +95,30 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var placeholders: PlaceholderService
         private set
 
+    /** 월드·생물군계를 보여줄 이름 (places.yml). */
+    lateinit var places: PlaceNames
+        private set
+
+    /** 플레이어가 지금 있는 월드·생물군계. 플레이스홀더가 비동기 스레드에서도 읽는다. */
+    lateinit var placeTracker: PlaceTracker
+        private set
+
+    /** places.yml 쓰기 순서. 워커 둘이 엇갈려 옛 내용이 새 내용을 덮지 않게 한다. */
+    private val placesVersion = java.util.concurrent.atomic.AtomicLong()
+    private var placesWritten = 0L
+    private val placesLock = Any()
+
+    private lateinit var commandBridge: NicknameCommandBridge
+
     private lateinit var ticker: DisplayTicker
 
-    var vault: VaultHook? = null
+    /**
+     * Vault 경제. core 의 훅을 그대로 쓴다 - 없으면 isEnabled 가 false 다.
+     *
+     * 다른 서비스들과 같이 onEnable 에서 만든다. 필드 초기화 시점에 logger 를 읽는 것은
+     * JavaPlugin 의 생성 순서에 기대는 일이라 이 파일의 관례를 따랐다.
+     */
+    lateinit var economy: EconomyHook
         private set
 
     /** MMOItems 아이템 식별. 없으면 null 이고 MMOItems 기반 비용 아이템은 인식되지 않는다. */
@@ -102,6 +131,7 @@ class TitleForgePlugin : JavaPlugin() {
 
     private companion object {
         const val STATS_FILE = "stats.yml"
+        const val PLACES_FILE = "places.yml"
     }
 
     override fun onEnable() {
@@ -115,18 +145,24 @@ class TitleForgePlugin : JavaPlugin() {
         badges = BadgeRegistry()
         stats = StatRegistry(logger)
         stats.reload(loadStatsConfig())
+        places = PlaceNames()
+        loadPlaces()
+        placeTracker = PlaceTracker(this)
         statApplier = StatApplier(logger, stats)
         statApplier.refreshDefinitions()
         profiles = ProfileManager(this)
         badgeService = BadgeService(this)
         nameDisplay = NameDisplayService(this)
         nicknames = NicknameService(this)
+        nicknameIndex = NicknameIndex(this)
+        commandBridge = NicknameCommandBridge(this)
         dialogInput = DialogTextInput(this)
         chatInput = ChatTextInput(this)
         nametags = NametagService(this)
         tablist = TablistService(this)
         rank = RankService(this)
         placeholders = PlaceholderService(logger)
+        economy = EconomyHook(logger)
         tokens = TokenRenderer(this)
         ticker = DisplayTicker(this)
 
@@ -184,6 +220,7 @@ class TitleForgePlugin : JavaPlugin() {
         messages.reload()
         refreshMessageGlobals()
         stats.reload(loadStatsConfig())
+        loadPlaces()
         statApplier.refreshDefinitions()
         rank.invalidate()
         startAutosave()
@@ -192,6 +229,8 @@ class TitleForgePlugin : JavaPlugin() {
         tokens.clear()
         nametags.refreshAll()
         tablist.clear()
+        // 제외 명령어 목록이 바뀌었을 수 있으니 "여기가 플레이어 이름 칸" 기억도 버린다.
+        commandBridge.clear()
     }
 
     /**
@@ -228,6 +267,50 @@ class TitleForgePlugin : JavaPlugin() {
         }
     }
 
+    /**
+     * places.yml 을 읽는다. 없으면 기본 파일(월드·생물군계 한글 이름)을 깔아준다. 못 읽으면 지금 이름을 그대로 둔다.
+     *
+     * 이미 깔린 파일에도 **기본값에 새로 생긴 이름을 더해 다시 쓴다** — 업데이트로 늘어난 생물군계(새 데이터팩 버전·
+     * 새 바닐라 생물군계)가 관리자가 손대지 않아도 들어온다. 고친 것·지운 것은 그대로다.
+     */
+    private fun loadPlaces() {
+        val file = java.io.File(dataFolder, PLACES_FILE)
+        if (!file.exists()) saveResource(PLACES_FILE, false)
+        val defaults = getResource(PLACES_FILE)?.use { it.readBytes().toString(Charsets.UTF_8) }
+        runCatching { places.load(file.readText(Charsets.UTF_8), defaults) }
+            .onSuccess { added ->
+                if (added > 0) {
+                    logger.info("places.yml 에 새 기본 이름 ${added}개를 더했습니다.")
+                    savePlaces()
+                }
+            }
+            .onFailure { logger.severe("places.yml 을 읽지 못했습니다 (${it.message}). 이전 이름을 그대로 씁니다.") }
+    }
+
+    /**
+     * GUI 로 고친 장소 이름을 쓴다. 내용은 여기(메인)서 뜨고 파일은 워커에서 쓴 뒤 바꿔 끼운다 —
+     * 쓰는 도중에 죽어도 옛 파일이 남는다.
+     */
+    fun savePlaces() {
+        val text = places.save()
+        val version = placesVersion.incrementAndGet()
+        Sched.async(this) {
+            synchronized(placesLock) {
+                if (version < placesWritten) return@async
+                runCatching {
+                    val file = java.io.File(dataFolder, PLACES_FILE)
+                    val temp = java.io.File(dataFolder, "$PLACES_FILE.tmp")
+                    temp.writeText(text, Charsets.UTF_8)
+                    java.nio.file.Files.move(
+                        temp.toPath(), file.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    )
+                    placesWritten = version
+                }.onFailure { logger.warning("places.yml 을 저장하지 못했습니다: ${it.message}") }
+            }
+        }
+    }
+
     private fun setupStorage(): Boolean = runCatching {
         val sql = SqlStorage(settings.storage, dataFolder, logger)
         sql.init()
@@ -247,25 +330,18 @@ class TitleForgePlugin : JavaPlugin() {
         pm.registerEvents(Menu.MenuListener(), this)
         pm.registerEvents(nameDisplay, this)
         pm.registerEvents(chatInput, this)
+        pm.registerEvents(commandBridge, this)
+        pm.registerEvents(placeTracker, this)
     }
 
     private fun registerCommands() {
-        val executor = TitleForgeCommand(this)
-        val command = getCommand("it")
-        if (command == null) {
-            logger.severe("plugin.yml 에 /it 명령어가 정의되어 있지 않습니다.")
-            return
-        }
-        command.setExecutor(executor)
-        command.tabCompleter = executor
+        TitleForgeCommand(this).register(this)
     }
 
     private fun setupHooks() {
         // 클래스 로딩 자체를 막기 위해 존재 확인 후에만 훅을 건드린다 (맞춤 지침 7.3-12).
-        if (server.pluginManager.getPlugin("Vault") != null) {
-            vault = runCatching { VaultHook.setup() }.getOrNull()
-            if (vault != null) logger.info("Vault 연동 활성화")
-        }
+        // EconomyHook.setup() 이 그 확인을 안에서 하고 로그까지 남긴다.
+        economy.setup()
 
         if (server.pluginManager.getPlugin("PlaceholderAPI") != null) {
             runCatching {

@@ -1,0 +1,39 @@
+name: InMc-TitleForge
+version: '${version}'
+main: kr.inmc.titleforge.TitleForgePlugin
+api-version: '${apiVersion}'   # build.gradle.kts 의 inmc { paper } 에서 유도됨
+description: 칭호 · 인장 · 닉네임 통합 관리 플러그인
+authors: [ InMc ]
+
+# 3세대의 `softdepend` 를 옮긴 것. urb 와 같은 이유로 전부 load: OMIT 이다 —
+# 훅이 전부 리플렉션이거나 플러그인 존재 확인 뒤에만 닿으므로 로드 순서가 의미가 없고,
+# BEFORE 를 걸면 Paper 가 의존성 순환을 보고 우리 간선을 조용히 끊는다.
+dependencies:
+  server:
+    # 필수 의존은 이것 하나뿐이다. core 가 kotlin-stdlib 과 공용 프레임워크를 들고 있어서
+    # join-classpath 없이는 클래스가 보이지 않는다.
+    inmc-core:      { load: BEFORE, required: true,  join-classpath: true }
+    PlaceholderAPI: { load: OMIT,   required: false, join-classpath: true }
+    Vault:          { load: OMIT,   required: false, join-classpath: true }
+    MythicLib:      { load: OMIT,   required: false, join-classpath: true }
+    MMOItems:       { load: OMIT,   required: false, join-classpath: true }
+
+# `commands:` 절은 paper-plugin.yml 에 없다. /it 은 TitleForgeCommand.register() 가
+# Paper 의 명령 등록기로 붙인다.
+permissions:
+  titleforge.use:
+    description: 기본 명령어 및 GUI 사용
+    default: true
+  titleforge.nickname:
+    description: 닉네임 변경
+    default: true
+  titleforge.info.other:
+    description: 다른 플레이어 정보 조회
+    default: op
+  titleforge.admin:
+    description: 칭호/인장 관리 전체 권한
+    default: op
+    children:
+      titleforge.use: true
+      titleforge.nickname: true
+      titleforge.info.other: true

@@ -160,10 +160,12 @@ class NicknameService(private val plugin: TitleForgePlugin) {
     /** 비용 확인 후 차감하고 적용까지 진행한다. 메인/엔티티 스레드 전용. */
     private fun charge(player: Player, profile: PlayerProfile, nickname: String) {
         // Vault 가 없으면 경제 비용은 자동으로 면제된다.
-        val economy = plugin.vault?.takeIf { config.economyEnabled && config.economyAmount > 0 }
+        // 함수 이름과 겹치지 않게 chargeMoney.
+        val chargeMoney = plugin.economy.isEnabled && config.economyEnabled && config.economyAmount > 0
+        val economy = plugin.economy
         val amount = config.economyAmount
 
-        if (economy != null && !economy.has(player, amount)) {
+        if (chargeMoney && !economy.has(player, amount)) {
             plugin.messages.send(player, "nickname.need-money", "amount" to economy.format(amount))
             return
         }
@@ -187,7 +189,7 @@ class NicknameService(private val plugin: TitleForgePlugin) {
         val event = NicknameChangeEvent(player, profile.nickname, nickname)
         if (!event.callEvent()) return
 
-        if (economy != null && !economy.withdraw(player, amount)) {
+        if (chargeMoney && !economy.withdraw(player, amount)) {
             plugin.messages.send(player, "nickname.need-money", "amount" to economy.format(amount))
             return
         }
@@ -195,7 +197,7 @@ class NicknameService(private val plugin: TitleForgePlugin) {
 
         commitNickname(player, profile, event.newNickname, touchCooldown = true)
 
-        if (economy != null) {
+        if (chargeMoney) {
             plugin.messages.send(player, "nickname.paid-money", "amount" to economy.format(amount))
         }
         if (chosen != null) {

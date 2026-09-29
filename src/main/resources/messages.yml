@@ -70,6 +70,11 @@ rank:
 placeholder:
   permanent: '영구'
 
+# 장소 이름 (places.yml)
+place:
+  saved: '<green><kind> <white><id></white><green> 의 이름을 정했습니다: <name>'
+  cleared: '<yellow><kind> <white><id></white><yellow> 의 이름을 지웠습니다. <gray>원래 이름이 보입니다.'
+
 # 값 입력 공통
 input:
   cancelled: '<yellow>입력을 취소했습니다.'
@@ -81,6 +86,7 @@ input:
   prompt-badge-id: '<yellow>새 ID 를 입력하세요. <gray>(소문자 영문/숫자/밑줄/한글)'
   prompt-change-id: '<yellow>바꿀 ID 를 입력하세요. <gray>(보유·장착 기록도 함께 옮겨집니다)'
   prompt-duration: '<yellow>보유 기간을 입력하세요. <gray>(예: 30d, 12h, 2w — 비우면 영구)'
+  prompt-place-name: '<yellow><kind> <white><id></white><yellow> 에 보여줄 이름을 입력하세요. <gray>(MiniMessage 서식 사용 가능 · 비우면 지웁니다)'
 
 nickname:
   disabled: '<red>닉네임 기능이 비활성화되어 있습니다.'
@@ -118,6 +124,7 @@ gui:
   player-badge-title: '<dark_gray><player> · <type> <gray>(<page>/<max>)'
   confirm-title: '<dark_gray>정말 진행할까요?'
   rank-title: '<dark_gray><type> 수집 순위'
+  place-title: '<dark_gray>장소 이름 · <kind> <gray>(<page>/<max>)'
 
   lore:
     equip-stats: '<aqua>장착 시 적용'
@@ -188,6 +195,15 @@ gui:
     rank-position: '<dark_gray><rank>위'
     rank-mine: '<gray>내 순위: <white><rank></white><gray>위 / <white><total></white>명  <dark_gray>(<count>개)'
     rank-none: '<gray>아직 순위가 없습니다.'
+    # ── 장소 이름 ──
+    place-id: '<dark_gray><id>'
+    place-missing: '<red>이 서버에 없는 <kind>입니다. <gray>(적어 둔 이름은 남습니다)'
+    place-raw: '<gray>원문: <white><value>'
+    place-unnamed: '<gray>이름 없음 — 원래 이름이 그대로 보입니다.'
+    place-no-name: '<gray><id>'
+    place-click-edit: '<yellow>좌클릭: 이름 정하기'
+    place-click-clear: '<yellow>Shift+우클릭: 이름 지우기'
+    place-clear-target: '<gray><kind> <white><id></white><gray> 의 이름을 지웁니다.'
 
   button:
     titles:
@@ -262,6 +278,20 @@ gui:
       name: '<yellow>분류 전환'
       lore:
         - '<gray>현재: <white><type>'
+    places:
+      name: '<aqua>장소 이름'
+      lore:
+        - '<gray>월드·생물군계를 보여줄 이름'
+        - '<dark_gray>%titleforge_world% · %titleforge_biome%'
+    place-kind:
+      name: '<yellow>월드 / 생물군계 전환'
+      lore:
+        - '<gray>현재: <white><kind>'
+    place-here:
+      name: '<green>지금 있는 <kind>'
+      lore:
+        - '<gray><id>'
+        - '<yellow>클릭하여 이름 정하기'
     create:
       name: '<green>새 <type> 생성'
       lore:

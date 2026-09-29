@@ -8,9 +8,11 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Color
+import org.bukkit.GameMode
 import org.bukkit.entity.Display
 import org.bukkit.entity.Player
 import org.bukkit.entity.TextDisplay
+import org.bukkit.potion.PotionEffectType
 import org.bukkit.scoreboard.Team
 import java.util.EnumMap
 import java.util.UUID
@@ -165,12 +167,46 @@ class NametagService(private val plugin: TitleForgePlugin) {
             return
         }
 
+        // 본체가 안 보이는 상태면 이름표도 없앤다.
+        //
+        // **바닐라 이름표는 계속 숨긴 채로 둔다.** 여기서 restoreVanillaNametag 를 부르면
+        // 실제 아이디가 머리 위에 되살아나 오히려 위치가 더 노출된다.
+        // 은신이 풀리면 다음 갱신 주기에 알아서 다시 만들어진다.
+        if (concealed(player)) {
+            if (handles.containsKey(player.uniqueId)) remove(player.uniqueId, immediate = true)
+            return
+        }
+
         var anyVisible = false
         for (layer in Layer.entries) {
             if (refreshLayer(player, layer)) anyVisible = true
         }
         if (anyVisible) hideVanillaNametag(player)
     }
+
+    /**
+     * 뷰어를 구분할 수 없는 은신 상태인가. 대상 소유 스레드에서 호출할 것.
+     *
+     * 베니시는 여기서 보지 않는다 — `hidePlayer` 를 쓰는 베니시는 뷰어별로
+     * [refreshVisibility] 의 `canSee` 가 걸러 주고, 그래야 볼 권한이 있는 관리자에게는
+     * 이름표가 남는다.
+     */
+    private fun concealed(player: Player): Boolean = NametagVisibility.concealedFromEveryone(
+        spectator = player.gameMode == GameMode.SPECTATOR,
+        invisible = player.isInvisible,
+        potion = player.hasPotionEffect(PotionEffectType.INVISIBILITY),
+        vanishedMeta = isVanished(player),
+        useVanishMeta = settings.vanishMetadata,
+        enabled = settings.hideWhenInvisible,
+    )
+
+    /**
+     * `vanished` 메타데이터. CMI · EssentialsX · SuperVanish 가 공통으로 붙이는 표식이다.
+     *
+     * 표식만 읽으므로 해당 플러그인의 클래스를 참조하지 않는다 (맞춤 지침 7.3-12).
+     */
+    private fun isVanished(player: Player): Boolean =
+        runCatching { player.getMetadata("vanished").any { it.asBoolean() } }.getOrDefault(false)
 
     /** @return 이 묶음이 화면에 떠 있으면 true. */
     private fun refreshLayer(player: Player, layer: Layer): Boolean {
@@ -240,7 +276,10 @@ class NametagService(private val plugin: TitleForgePlugin) {
      * 소유 스레드([applyVisibility] 호출부)에서 이뤄진다.
      */
     fun refreshVisibility() {
-        if (!settings.enabled || !settings.hideWhenNotVisible) return
+        if (!settings.enabled) return
+        // 시야 가림과 은신은 서로 독립이다. 둘 중 하나만 켜져 있어도 이 판정은 돌아야 한다.
+        if (!settings.hideWhenNotVisible && !settings.hideWhenInvisible) return
+        val useLineOfSight = settings.hideWhenNotVisible
         val rangeSq = settings.viewRange * settings.viewRange
         val online = Bukkit.getOnlinePlayers()
 
@@ -278,10 +317,24 @@ class NametagService(private val plugin: TitleForgePlugin) {
                         val reachable = viewer.world == ownerWorld &&
                             viewer.location.distanceSquared(ownerLocation) <= rangeSq
                         // 위 사전 필터를 통과했더라도 좌표가 갱신됐을 수 있으므로 여기서 다시 확인한다.
-                        if (!reachable && hiddenFrom[ownerUuid]?.contains(viewer.uniqueId) == true) {
+                        if (useLineOfSight && !reachable &&
+                            hiddenFrom[ownerUuid]?.contains(viewer.uniqueId) == true
+                        ) {
                             return@entity
                         }
-                        val visible = reachable && runCatching { viewer.hasLineOfSight(owner) }.getOrDefault(true)
+                        // 베니시 플러그인은 hidePlayer 로 대상을 숨긴다. 그래서 canSee 가 곧
+                        // "이 뷰어에게 본체가 보이는가" 이며, 볼 권한이 있는 관리자는 true 라
+                        // 이름표가 그대로 남는다.
+                        val canSee = !settings.hideWhenInvisible ||
+                            runCatching { viewer.canSee(owner) }.getOrDefault(true)
+                        val lineOfSight = reachable &&
+                            runCatching { viewer.hasLineOfSight(owner) }.getOrDefault(true)
+                        val visible = NametagVisibility.visibleTo(
+                            concealed = false, // 전역 은신은 refresh() 에서 엔티티째 지운다
+                            canSee = canSee,
+                            lineOfSight = lineOfSight,
+                            useLineOfSight = useLineOfSight,
+                        )
                         applyVisibility(owner, handle, viewer, visible)
                     }
                 }

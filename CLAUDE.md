@@ -129,9 +129,18 @@ python tools/verify_gui.py    # 메시지·설정 키, stats.yml 검증, 슬롯 
 
 ## 빌드
 
+이 플러그인은 **`제작플긴/` 워크스페이스의 `:titleforge` 모듈**입니다. 상위 폴더에서 빌드합니다.
+
 ```bash
-./gradlew build     # build/libs/InMc-TitleForge-1.0.0.jar (shadowJar)
+cd .. && ./gradlew :titleforge:build   # InMc-TitleForge/build/libs/InMc-TitleForge-1.0.0.jar
 ```
 
-`gradle.properties` 의 `paperApiVersion` 이 대상 서버 버전과 맞는지 확인하세요.
-`build.bat` 은 테스트를 건너뛰는 빠른 빌드입니다.
+- 빌드 설정은 `inmc.paper-plugin` 관례 플러그인에서 옵니다. Paper 버전은 `build.gradle.kts` 의
+  `inmc { paper = "26.1.2" }` 한 줄이 정하고, 거기서 `paper-plugin.yml` 의 `api-version` 까지
+  유도됩니다 — 둘이 어긋날 수 없습니다.
+- 라이브러리 버전은 워크스페이스 카탈로그(`inmc-core/gradle/libs.versions.toml`) 한 벌에 있습니다.
+- **`kotlin-stdlib` 을 번들하지 않습니다.** `inmc-core` 가 한 벌만 들고 있고,
+  `paper-plugin.yml` 의 `join-classpath` 로 붙습니다. HikariCP·bStats relocate 는 그대로입니다.
+- 이 폴더의 `settings.gradle.kts`·`gradlew`·`gradle/`·`gradle.properties`·`build.bat` 은
+  단독 빌드 시절의 잔재로 **더 이상 쓰이지 않습니다** (하위 프로젝트의 `gradle.properties` 는
+  Gradle 이 읽지도 않습니다).

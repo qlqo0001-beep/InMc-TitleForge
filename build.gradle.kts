@@ -1,86 +1,34 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    kotlin("jvm") version "2.4.10"
-    id("com.gradleup.shadow") version "9.0.0"
+    id("inmc.paper-plugin")
 }
 
-group = property("pluginGroup") as String
-version = property("pluginVersion") as String
+group = "kr.inmc.titleforge"
+version = "1.0.0"
 
-repositories {
-    mavenCentral()
-    maven("https://repo.papermc.io/repository/maven-public/") { name = "papermc" }
-    maven("https://repo.extendedclip.com/releases/") { name = "placeholderapi" }
-    maven("https://jitpack.io") { name = "jitpack" }
+inmc {
+    // 3세대에서 26.1.2 로 컴파일하면서 plugin.yml 에는 api-version '1.21' 을 적고 있었다.
+    // 관례 플러그인이 api-version 을 여기서 유도하므로 그 어긋남이 구조적으로 불가능해진다.
+    paper = "26.1.2"
+    pluginName = "InMc-TitleForge"
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:${property("paperApiVersion")}")
+    compileOnly(libs.placeholderapi) { isTransitive = false }
+    compileOnly(libs.vault.api) { isTransitive = false }
+    // MMOItems / MythicLib 는 100% 리플렉션.
 
-    // 선택 연동 (soft-depend). 서버에 없으면 훅이 로드되지 않습니다.
-    compileOnly("me.clip:placeholderapi:2.11.6")
-    compileOnly("com.github.MilkBowl:VaultAPI:1.7") { isTransitive = false }
-
-    // 셰이딩 대상
-    // bStats 는 relocate 하지 않으면 로드를 거부한다 (아래 shadowJar 설정 참고).
-    implementation("org.bstats:bstats-bukkit:3.1.0")
-    implementation("com.zaxxer:HikariCP:7.0.2")
-    implementation("org.xerial:sqlite-jdbc:3.50.3.0")
-    implementation("org.mariadb.jdbc:mariadb-java-client:3.5.4")
-
-    // 순수 로직 단위 테스트 (StatLayout / StatValueParser / Stats)
-    testImplementation(kotlin("test"))
-    testImplementation("io.papermc.paper:paper-api:${property("paperApiVersion")}")
+    // 셰이딩 대상. 이 넷만 jar 에 들어간다 (stdlib 은 core 가 준다).
+    implementation(libs.bstats.bukkit)
+    implementation(libs.hikaricp)
+    // JDBC 드라이버는 컴파일 시점에 보이지 않는다 — 연결 URL 로만 잡힌다.
+    runtimeOnly(libs.sqlite.jdbc)
+    runtimeOnly(libs.mariadb.client)
 }
 
-kotlin {
-    jvmToolchain(25)
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_25)
-        freeCompilerArgs.add("-Xjvm-default=all")
-    }
-}
-
-tasks {
-    processResources {
-        filteringCharset = "UTF-8"
-        val tokens = mapOf(
-            "version" to project.version.toString(),
-            "group" to project.group.toString(),
-        )
-        inputs.properties(tokens)
-        filesMatching("plugin.yml") { expand(tokens) }
-    }
-
-    compileKotlin {
-        // 빌드 재현성: 경고를 놓치지 않도록
-        compilerOptions.extraWarnings.set(true)
-    }
-
-    test {
-        useJUnitPlatform()
-        testLogging {
-            events("passed", "skipped", "failed")
-        }
-    }
-
-    shadowJar {
-        archiveClassifier.set("")
-        // Hikari 만 relocate. JDBC 드라이버는 드라이버 이름 문자열 로딩과 충돌하지 않도록 그대로 둡니다.
-        relocate("com.zaxxer.hikari", "kr.inmc.titleforge.lib.hikari")
-        // bStats 는 relocate 가 **필수**입니다. 안 하면 다른 플러그인의 bStats 와 충돌하고,
-        // 라이브러리 자체가 relocate 여부를 검사해 예외를 던집니다.
-        relocate("org.bstats", "kr.inmc.titleforge.lib.bstats")
-        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-        mergeServiceFiles()
-    }
-
-    build {
-        dependsOn(shadowJar)
-    }
-
-    jar {
-        enabled = false
-    }
+tasks.shadowJar {
+    // Hikari 만 relocate. JDBC 드라이버는 드라이버 이름 문자열 로딩과 충돌하지 않도록 그대로 둔다.
+    relocate("com.zaxxer.hikari", "kr.inmc.titleforge.lib.hikari")
+    // bStats 는 relocate 가 **필수**다. 안 하면 다른 플러그인의 bStats 와 충돌하고,
+    // 라이브러리 자체가 relocate 여부를 검사해 예외를 던진다.
+    relocate("org.bstats", "kr.inmc.titleforge.lib.bstats")
 }

@@ -3,12 +3,13 @@ build/
 out/
 *.class
 *.jar
-!gradle/wrapper/gradle-wrapper.jar
 .idea/
 *.iml
 .kotlin/
 local.properties
 run/
+# VS Code 자바 확장이 만드는 소스 복사본
+bin/
 # 저장소 스냅샷 아카이브는 커밋하지 않습니다
 *.zip
 __pycache__/
