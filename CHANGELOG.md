@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-09-30 — 옛 자바스크립트 장소 토큰을 직접 푼다(서버 멈춤)
+
+- 테섭 워치독(05:24, "10초 응답 없음"): 접속 직후 탭리스트의 `%javascript_world_name%`·`%javascript_biome%` 가 PAPI 자바스크립트 확장(Nashorn)을
+  메인 스레드에서 처음 컴파일하며 서버를 멈췄다. 이 둘은 이 플러그인의 장소 이름(`places.yml`)과 같은 값이라 **PAPI 에 넘기지 않고 직접** 푼다
+  (`TokenRenderer.LEGACY_SCRIPTS` → `world_mini`·`biome_mini`). 설정을 `%titleforge_world_mini%`·`%titleforge_biome_mini%` 로 바꾸는 것을 권장
+
 ## 2026-09-30 — 저장소에 올림
 
 - 워크스페이스 작업(2026-09-11 ~ 25)을 처음으로 이 저장소에 올렸다. 그 전 저장소는 2026-08-19 그대로였다

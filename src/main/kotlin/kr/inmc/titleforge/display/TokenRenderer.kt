@@ -128,6 +128,9 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         //    값이 바뀌는 주기는 외부 것과 같이 플레이어별 캐시로 다스린다.
         val cache = playerCache.getOrPut(player.uniqueId) { ConcurrentHashMap() }
         if (lower == "tf_balance") return cached(cache, lower) { balance(player) }
+        // 옛 PAPI 스크립트(world_name.js · biome.js)는 이 플러그인의 장소 이름과 같은 값이다. PAPI 로 넘기면 자바스크립트 엔진(Nashorn)이
+        // 메인 스레드에서 처음 컴파일되며 서버가 10초 넘게 멈춘다(2026-09-30 테섭 워치독 — 접속 직후 탭리스트). 그 둘은 직접 푼다.
+        LEGACY_SCRIPTS[lower]?.let { name -> return cached(cache, lower) { Text.fromLegacy(own.resolve(player, name).orEmpty()) } }
         if (lower.startsWith(OWN_PREFIX)) {
             return cached(cache, lower) {
                 // 모르는 이름이면 PAPI 에 넘긴다(다른 버전의 이 플러그인이 등록했을 수도 있다).
@@ -215,6 +218,9 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
 
         /** 이 플러그인의 PAPI 이름. 같은 이름을 PAPI 없이도 푼다. */
         const val OWN_PREFIX = "titleforge_"
+
+        /** 옛 PAPI 자바스크립트 이름 → 같은 값을 내는 자기 이름(`titleforge_` 뒤). 설정을 안 고쳐도 자바스크립트를 부르지 않게. */
+        val LEGACY_SCRIPTS = mapOf("javascript_world_name" to "world_mini", "javascript_biome" to "biome_mini")
 
         /**
          * 치환값 자리표시자 이름의 접두사.
