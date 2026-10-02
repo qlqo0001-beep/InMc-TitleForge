@@ -51,9 +51,16 @@ class NicknameIndex(private val plugin: TitleForgePlugin) {
         val owners: Map<String, String>,
         /** 제안용 (닉네임 평문, 실명) 목록. 닉네임 순 정렬. */
         val suggestions: List<Pair<String, String>>,
+        /**
+         * 탭 완성에서 아이디 대신 닉네임만 띄울 사람의 실명(소문자).
+         *
+         * 닉네임이 [realNameOf] 로 **다시 이 사람에게 돌아올 때만** 넣는다. 닉네임이 겹치거나
+         * 남의 아이디와 같으면 닉네임으로는 지목되지 않으므로, 아이디까지 감추면 고를 방법이 없어진다.
+         */
+        val replaced: Set<String>,
     ) {
         companion object {
-            val EMPTY = Snapshot(emptySet(), emptyMap(), emptyList())
+            val EMPTY = Snapshot(emptySet(), emptyMap(), emptyList(), emptySet())
         }
     }
 
@@ -109,12 +116,17 @@ class NicknameIndex(private val plugin: TitleForgePlugin) {
         }
         for (key in duplicated) owners.remove(key)
 
+        val replaced = suggestions
+            .filter { (nickname, realName) -> resolve(nickname, realNames, owners) == realName }
+            .mapTo(HashSet()) { it.second.lowercase(Locale.ROOT) }
+
         snapshot = Snapshot(
             realNames = realNames,
             owners = owners,
             suggestions = suggestions
                 .distinctBy { it.first.lowercase(Locale.ROOT) }
                 .sortedBy { it.first },
+            replaced = replaced,
         )
     }
 
@@ -123,6 +135,10 @@ class NicknameIndex(private val plugin: TitleForgePlugin) {
     /** [value] 가 접속 중인 사람의 실제 아이디인가. */
     fun isRealName(value: String): Boolean =
         snapshot.realNames.contains(value.lowercase(Locale.ROOT))
+
+    /** 탭 완성에서 [value] 아이디를 빼고 그 사람의 닉네임만 띄워도 되는가. */
+    fun isReplacedByNickname(value: String): Boolean =
+        snapshot.replaced.contains(value.lowercase(Locale.ROOT))
 
     /** [prefix] 로 시작하는 (닉네임 평문, 실명) 제안. 빈 문자열이면 전부. */
     fun suggestions(prefix: String): List<Pair<String, String>> {
@@ -139,9 +155,16 @@ class NicknameIndex(private val plugin: TitleForgePlugin) {
      */
     fun realNameOf(token: String): String? {
         val current = snapshot
-        // 실명이 우선이다. 남의 닉네임과 내 아이디가 겹쳐도 아이디로 지목한 쪽을 존중한다.
-        if (current.realNames.contains(token.lowercase(Locale.ROOT))) return null
-        val key = NicknameNormalizer.normalize(token) ?: return null
-        return current.owners[key]
+        return resolve(token, current.realNames, current.owners)
+    }
+
+    private companion object {
+        /** [realNameOf] 의 규칙. [rebuild] 가 아직 걸지 않은 스냅샷에도 같은 규칙을 쓰려고 뺐다. */
+        fun resolve(token: String, realNames: Set<String>, owners: Map<String, String>): String? {
+            // 실명이 우선이다. 남의 닉네임과 내 아이디가 겹쳐도 아이디로 지목한 쪽을 존중한다.
+            if (realNames.contains(token.lowercase(Locale.ROOT))) return null
+            val key = NicknameNormalizer.normalize(token) ?: return null
+            return owners[key]
+        }
     }
 }

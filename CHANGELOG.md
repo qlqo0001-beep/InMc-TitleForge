@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-10-02 — 탭 완성에 닉네임만
+
+- 다른 플러그인 명령어의 플레이어 이름 탭 완성에 **실제 아이디와 닉네임이 함께** 떴다. 이제 닉네임이 있는 사람은
+  아이디를 빼고 닉네임만 띄운다(`ninesik` · `나인` → `나인`). 닉네임이 없는 사람은 아이디 그대로
+- 닉네임으로 지목할 수 없을 때는 아이디를 남긴다 — `resolve: false`, `excluded-commands` 에 든 명령어, 닉네임이 겹치는
+  사람(`unique: false`), 닉네임이 접속자 아이디와 같은 사람. 감추면 그 사람을 고를 방법이 없어서다.
+  판정은 "고른 닉네임이 `realNameOf` 로 다시 그 사람에게 돌아오는가" 하나다(`NicknameIndex.isReplacedByNickname`)
+- 아이디를 직접 쳐서 지목하는 것은 지금처럼 된다. 탭 목록에서만 빠진다
+- 바닐라 명령어(`/msg`, `/tp`)의 제안은 클라이언트가 만들므로 여전히 아이디가 뜬다
+- 확인: 실제 `NicknameIndex` · `NicknameNormalizer` · `NicknameCommandBridge` 를 스텁에 대고 탭 완성 8가지와 명령어 치환을
+  실행해 봤다. 빌드는 못 했다(워크스페이스 없음)
+
 ## 2026-10-02 — 명령어 다리가 `/it` 인자까지 바꾸던 문제
 
 - `NicknameCommandBridge` 는 자기 명령어를 건너뛰려고 `plugin.getCommand(label)` 을 봤는데, Brigadier 로 등록한

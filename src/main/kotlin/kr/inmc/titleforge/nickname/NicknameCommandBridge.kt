@@ -16,7 +16,7 @@ import java.util.Locale
  *
  * 아이디가 `ninesik` 인 사람이 닉네임을 `나인` 으로 바꿨다면,
  *
- *  1. 다른 플러그인이 플레이어 이름을 제안하는 자리에 `나인` 도 함께 뜨고 ([onTabComplete])
+ *  1. 다른 플러그인이 플레이어 이름을 제안하는 자리에 `ninesik` 대신 `나인` 이 뜨고 ([onTabComplete])
  *  2. `나인` 으로 친 인자는 명령어가 실행되기 직전에 `ninesik` 으로 되돌아간다 ([rewrite])
  *
  * 2번이 없으면 1번은 보기용에 그친다. 다른 플러그인은 `Bukkit.getPlayer("나인")` 을 부를 텐데
@@ -60,7 +60,7 @@ class NicknameCommandBridge(private val plugin: TitleForgePlugin) : Listener {
     // ── 탭 완성 ────────────────────────────────────────────────────────
 
     /**
-     * 이미 만들어진 제안 목록에 닉네임을 더한다.
+     * 이미 만들어진 제안 목록에서 닉네임이 있는 사람의 아이디를 닉네임으로 바꿔 띄운다.
      *
      * 제안이 **다 계산된 뒤에** 도는 [TabCompleteEvent] 를 쓴다. Paper 의
      * `AsyncTabCompleteEvent` 는 이보다 먼저, 목록이 아직 비어 있을 때 돌기 때문에
@@ -92,15 +92,30 @@ class NicknameCommandBridge(private val plugin: TitleForgePlugin) : Listener {
         val playerSlot = decided ?: playerSlots[slotKey] ?: return
         if (!playerSlot) return
 
+        // 닉네임이 있는 사람은 아이디를 빼고 닉네임만 띄운다. 단, 이 명령어에서 닉네임이 실제로
+        // 통할 때만이다 — 안 통하는데 아이디까지 감추면 그 사람을 고를 방법이 없어진다.
+        val kept = if (acceptsNickname(labelOf(buffer))) {
+            completions.filterNot { index.isReplacedByNickname(it) }
+        } else {
+            completions
+        }
         val additions = index.suggestions(token)
             .map { it.first }
-            .filter { nickname -> completions.none { it.equals(nickname, ignoreCase = true) } }
-        if (additions.isEmpty()) return
+            .filter { nickname -> kept.none { it.equals(nickname, ignoreCase = true) } }
+        if (additions.isEmpty() && kept.size == completions.size) return
 
-        // 실제 아이디를 앞에 두고 닉네임을 뒤에 붙인다. 아이디로 대상을 지정하던 기존 습관이
-        // 목록 순서 때문에 밀리지 않게 하기 위해서다.
-        event.completions = completions + additions
+        event.completions = kept + additions
     }
+
+    /** [label] 명령어에 닉네임을 쳐도 대상을 찾는가. */
+    private fun acceptsNickname(label: String): Boolean =
+        // 자기 명령어는 대상 자리에서 닉네임을 직접 알아듣는다 ([rewrite] 참고).
+        label in TitleForgeCommand.LABELS ||
+            (settings.commandBridge.resolve && label !in settings.commandBridge.excludedCommands)
+
+    /** `/essentials:msg 나인` → `msg`. 플레이어는 `/` 로 시작하고 콘솔은 아니다. */
+    private fun labelOf(command: String): String =
+        command.substringBefore(' ').removePrefix("/").substringAfterLast(':').lowercase(Locale.ROOT)
 
     // ── 인자 치환 ──────────────────────────────────────────────────────
 
@@ -133,7 +148,7 @@ class NicknameCommandBridge(private val plugin: TitleForgePlugin) : Listener {
         if (parts.size < 2) return null
 
         // `essentials:msg` 처럼 네임스페이스가 붙어 들어와도 같은 명령어로 본다.
-        val label = parts[0].removePrefix("/").substringAfterLast(':').lowercase(Locale.ROOT)
+        val label = labelOf(parts[0])
         if (label.isEmpty() || label in settings.commandBridge.excludedCommands) return null
 
         // 자기 자신은 건드리지 않는다. `/it create title 나인` 의 칭호 ID 나

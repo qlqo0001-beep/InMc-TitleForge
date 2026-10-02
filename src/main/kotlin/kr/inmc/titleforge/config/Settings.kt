@@ -75,7 +75,7 @@ class Settings private constructor(
     /**
      * 다른 플러그인 명령어에서 닉네임을 쓰게 할지.
      *
-     * @param suggest 플레이어 이름을 제안하는 자리에 닉네임도 함께 띄운다.
+     * @param suggest 플레이어 이름을 제안하는 자리에서 닉네임이 있는 사람은 아이디 대신 닉네임을 띄운다.
      * @param resolve 닉네임으로 들어온 인자를 실행 직전에 실제 아이디로 되돌린다.
      *   꺼 두면 [suggest] 로 뜬 닉네임을 골라도 대부분의 플러그인이 대상을 찾지 못한다.
      * @param excludedCommands [resolve] 에서 제외할 명령어 이름(소문자).
