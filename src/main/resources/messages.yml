@@ -302,6 +302,11 @@ gui:
       lore:
         - '<gray>현재: <white><value>'
         - '<dark_gray>MiniMessage 서식 사용 가능'
+    decorate:
+      name: '<light_purple>칭호 꾸미기'
+      lore:
+        - '<gray>괄호 모양·괄호 색·글자 색(그라데이션)·굵게를'
+        - '<gray>표에서 골라 표시 이름을 만듭니다.'
     change-id:
       name: '<gold>ID 변경'
       lore:

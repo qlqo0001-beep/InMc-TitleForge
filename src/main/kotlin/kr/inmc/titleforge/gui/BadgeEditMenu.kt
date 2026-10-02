@@ -155,6 +155,13 @@ class BadgeEditMenu(
             }
         }
 
+        // 칭호 꾸미기 — 괄호·색을 표에서 골라 표시 이름을 만든다(인장은 그림이라 없음).
+        if (badge.type == BadgeType.TITLE) {
+            button(20, Gui.item(plugin, "gui.button.decorate", Material.BRUSH, placeholders = arrayOf("value" to badge.displayName))) {
+                TitleDecorateMenu(plugin, viewer, badge.id, kr.inmc.titleforge.badge.TitleStyle.from(badge.plainName)).openLater()
+            }
+        }
+
         // 장착/보유 스텟은 하나의 통합 편집 창에서 다룬다.
         if (badge.type == BadgeType.TITLE) {
             val summary = ArrayList<Component>()
