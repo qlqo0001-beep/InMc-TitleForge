@@ -91,8 +91,12 @@ class DialogTextInput(private val plugin: TitleForgePlugin) : TextInput {
         player.showDialog(dialog)
     }
 
-    private companion object {
-        const val FIELD_KEY = "value"
+    companion object {
+        /**
+         * 입력칸 키. [kr.inmc.titleforge.nickname.NicknameDialogBridge] 가 이 키를 보고 자기 창을
+         * 알아보므로, 다른 플러그인과 겹치지 않게 접두어를 붙인다.
+         */
+        const val FIELD_KEY = "titleforge_value"
     }
 }
 

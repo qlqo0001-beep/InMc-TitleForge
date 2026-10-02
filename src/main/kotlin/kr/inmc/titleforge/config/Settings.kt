@@ -79,11 +79,13 @@ class Settings private constructor(
      * @param resolve 닉네임으로 들어온 인자를 실행 직전에 실제 아이디로 되돌린다.
      *   꺼 두면 [suggest] 로 뜬 닉네임을 골라도 대부분의 플러그인이 대상을 찾지 못한다.
      * @param excludedCommands [resolve] 에서 제외할 명령어 이름(소문자).
+     * @param resolveDialog 다른 플러그인 다이얼로그 입력칸에 닉네임만 들어 있으면 실제 아이디로 되돌린다.
      */
     class CommandBridgeSettings(
         val suggest: Boolean,
         val resolve: Boolean,
         val excludedCommands: Set<String>,
+        val resolveDialog: Boolean,
     )
 
     class NicknameSettings(
@@ -308,6 +310,7 @@ class Settings private constructor(
                     excludedCommands = config.getStringList("nickname.command-bridge.excluded-commands")
                         .map { it.lowercase() }
                         .toSet(),
+                    resolveDialog = config.getBoolean("nickname.command-bridge.resolve-dialog", true),
                 ),
             )
 

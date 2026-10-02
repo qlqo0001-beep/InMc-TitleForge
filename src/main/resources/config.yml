@@ -93,6 +93,10 @@ nickname:
     # resolve 에서 제외할 명령어. 닉네임과 똑같은 단어를 인자로 받는 명령어가 있다면 적으세요.
     # 예: ['plugman', 'lp']
     excluded-commands: []
+    # 다른 플러그인의 다이얼로그 입력창(예: Lands 의 'Add Player')에 닉네임을 쳐도 대상을 찾게 합니다.
+    # 입력칸 값 '전체'가 접속 중인 사람의 닉네임일 때만 실제 아이디로 바꿉니다.
+    # 이 플러그인 자신의 입력창(닉네임 변경 등)은 바꾸지 않습니다.
+    resolve-dialog: true
   # 변경 제한
   cooldown-seconds: 604800   # 7일. 0이면 쿨타임 없음
   cost:

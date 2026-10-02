@@ -21,6 +21,7 @@ import kr.inmc.titleforge.input.ChatTextInput
 import kr.inmc.titleforge.input.DialogTextInput
 import kr.inmc.titleforge.nickname.NameDisplayService
 import kr.inmc.titleforge.nickname.NicknameCommandBridge
+import kr.inmc.titleforge.nickname.NicknameDialogBridge
 import kr.inmc.titleforge.nickname.NicknameIndex
 import kr.inmc.titleforge.nickname.NicknameService
 import kr.inmc.titleforge.place.PlaceNames
@@ -331,6 +332,7 @@ class TitleForgePlugin : JavaPlugin() {
         pm.registerEvents(nameDisplay, this)
         pm.registerEvents(chatInput, this)
         pm.registerEvents(commandBridge, this)
+        pm.registerEvents(NicknameDialogBridge(this), this)
         pm.registerEvents(placeTracker, this)
     }
 

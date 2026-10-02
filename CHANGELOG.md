@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-10-02 — 다른 플러그인 다이얼로그에서도 닉네임으로 지목
+
+- Lands 의 "Add Player" 창에 닉네임을 치면 대상을 못 찾았다. 그 창은 입력값을 명령어가 아니라 다이얼로그(커스텀 클릭)로
+  받아 `NicknameCommandBridge` 를 지나지 않는다
+- `NicknameDialogBridge`: `PlayerCustomClickEvent`(LOWEST)에서 입력칸 값 **전체**가 접속 중인 사람의 닉네임이면 실제
+  아이디로 바꿔 둔다. Paper 는 같은 NBT 객체를 이벤트 → `customClick` 콜백 순으로 넘기므로 어느 쪽으로 받든 바뀐 값을 본다.
+  API 가 읽기 전용이라 쓰기는 리플렉션이고, 실패하면 경고 한 번 남기고 꺼진다
+- 새 설정 `nickname.command-bridge.resolve-dialog`(기본 `true`) — 이미 깔린 `config.yml` 에 없어도 켜진다
+- 자기 입력창 키 `value` → `titleforge_value`. 닉네임 변경 창 등 자기 창은 치환하지 않으려고 이 키로 알아본다
+- 한계: 접속 중인 사람만(명령어 다리와 같다). Lands 가 패킷을 직접 가로채 읽는다면 효과가 없다 — **테스트 서버에서 아직
+  확인하지 못했다.** 빌드도 못 해 봤고(워크스페이스 없음), 새 파일만 스텁에 대고 컴파일·동작 검사했다
+
 ## 2026-09-30 — 옛 자바스크립트 장소 토큰을 직접 푼다(서버 멈춤)
 
 - 테섭 워치독(05:24, "10초 응답 없음"): 접속 직후 탭리스트의 `%javascript_world_name%`·`%javascript_biome%` 가 PAPI 자바스크립트 확장(Nashorn)을
