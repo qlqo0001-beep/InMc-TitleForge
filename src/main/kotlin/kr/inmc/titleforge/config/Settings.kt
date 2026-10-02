@@ -105,6 +105,10 @@ class Settings private constructor(
         val cooldownSeconds: Long,
         val economyEnabled: Boolean,
         val economyAmount: Double,
+        /** 비용을 받을 화폐 id(inmc-economy — 예: `cash`). 빈 칸이면 기본 화폐(없으면 Vault). */
+        val economyCurrency: String = "",
+        /** 한 번도 바꾼 적 없는 사람의 첫 변경은 비용·쿨타임 없이(테섭 2026-10-02 "원할 때 딱 1번"). */
+        val firstChangeFree: Boolean = true,
         /** 비용 아이템 정의. 여러 개를 켜면 **하나만 만족해도** 지불로 인정한다. */
         val costItems: List<CostItem>,
         /** 다른 플러그인 명령어와의 연동. */
@@ -303,6 +307,8 @@ class Settings private constructor(
                 cooldownSeconds = config.getLong("nickname.cooldown-seconds", 0L).coerceAtLeast(0L),
                 economyEnabled = config.getBoolean("nickname.cost.economy.enabled", false),
                 economyAmount = config.getDouble("nickname.cost.economy.amount", 0.0).coerceAtLeast(0.0),
+                economyCurrency = config.getString("nickname.cost.economy.currency").orEmpty().trim(),
+                firstChangeFree = config.getBoolean("nickname.cost.first-change-free", true),
                 costItems = readCostItems(config.getConfigurationSection("nickname.cost.item")),
                 commandBridge = CommandBridgeSettings(
                     suggest = config.getBoolean("nickname.command-bridge.suggest", true),

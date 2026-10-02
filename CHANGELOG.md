@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-10-02 — 닉네임 비용(화폐·첫 변경 무료)
+
+- 테섭 의견 "닉변을 공짜로 마구 하면 서버에 안 좋다 — 캐시로, 처음 한 번은 무료": `nickname.cost.economy.currency`(inmc-economy 화폐 id —
+  예 `cash`, 비우면 기본 화폐)와 `nickname.cost.first-change-free`(기본 켜짐 — 스스로 바꾼 적 없는 사람의 첫 변경은 비용 없이). 금액·켜기는
+  `nickname.cost.economy.enabled`·`amount`
+
 ## 2026-10-02 — 칭호 꾸미기
 
 - 테섭 요청 "괄호·색을 표에서 골라 편하게, 내용은 그라데이션": 칭호 편집 화면에 **칭호 꾸미기**(`gui/TitleDecorateMenu.kt`) — 괄호 9가지 ·

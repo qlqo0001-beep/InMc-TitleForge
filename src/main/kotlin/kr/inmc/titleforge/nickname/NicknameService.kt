@@ -157,21 +157,57 @@ class NicknameService(private val plugin: TitleForgePlugin) {
         return true
     }
 
+    /** 한 번도 스스로 바꾼 적 없는가(첫 변경 무료가 켜져 있을 때). 바꾸면 [PlayerProfile.nicknameChangedAt] 이 찍힌다. */
+    fun isFirstChange(profile: PlayerProfile): Boolean = config.firstChangeFree && profile.nicknameChangedAt <= 0L
+
+    /**
+     * 비용을 받는 지갑 — 화폐를 정했으면 그 화폐(inmc-economy, 정수 금액), 아니면 기본 화폐/Vault([EconomyHook]).
+     * 정한 화폐가 없으면(플러그인이 없거나 이름이 틀림) 비용을 받지 않는다 — 콘솔에 한 번 알린다.
+     */
+    private inner class Wallet {
+        private val currency = config.economyCurrency.takeIf { it.isNotBlank() }?.let { id ->
+            kr.inmc.core.economy.Currencies.get(id) ?: null.also { warnMissingCurrency(id) }
+        }
+        private val named = config.economyCurrency.isNotBlank()
+
+        val enabled: Boolean get() = if (named) currency != null else plugin.economy.isEnabled
+
+        fun has(player: Player, amount: Double): Boolean =
+            currency?.has(player, kotlin.math.round(amount).toLong()) ?: plugin.economy.has(player, amount)
+
+        fun withdraw(player: Player, amount: Double): Boolean =
+            currency?.withdraw(player, kotlin.math.round(amount).toLong(), "titleforge:nickname") ?: plugin.economy.withdraw(player, amount)
+
+        fun format(amount: Double): String =
+            currency?.format(kotlin.math.round(amount).toLong()) ?: plugin.economy.format(amount)
+    }
+
+    @Volatile
+    private var warnedCurrency: String? = null
+
+    private fun warnMissingCurrency(id: String) {
+        if (warnedCurrency == id) return
+        warnedCurrency = id
+        plugin.logger.warning("닉네임 비용 화폐 '$id' 를 찾을 수 없어 비용을 받지 않습니다(nickname.cost.economy.currency).")
+    }
+
     /** 비용 확인 후 차감하고 적용까지 진행한다. 메인/엔티티 스레드 전용. */
     private fun charge(player: Player, profile: PlayerProfile, nickname: String) {
+        // 처음 바꾸는 사람은 한 번 공짜(설정) — 비용 없이 바로. 쿨타임은 이 변경부터 센다.
+        val free = isFirstChange(profile)
         // Vault 가 없으면 경제 비용은 자동으로 면제된다.
         // 함수 이름과 겹치지 않게 chargeMoney.
-        val chargeMoney = plugin.economy.isEnabled && config.economyEnabled && config.economyAmount > 0
-        val economy = plugin.economy
+        val wallet = Wallet()
+        val chargeMoney = !free && wallet.enabled && config.economyEnabled && config.economyAmount > 0
         val amount = config.economyAmount
 
-        if (chargeMoney && !economy.has(player, amount)) {
-            plugin.messages.send(player, "nickname.need-money", "amount" to economy.format(amount))
+        if (chargeMoney && !wallet.has(player, amount)) {
+            plugin.messages.send(player, "nickname.need-money", "amount" to wallet.format(amount))
             return
         }
         // 비용 아이템이 여러 개 켜져 있으면 **하나만** 만족해도 된다.
         // 확인과 차감이 서로 다른 항목을 고르면 이중 차감이 되므로, 여기서 고른 것을 끝까지 쓴다.
-        val required = config.costItems
+        val required = if (free) emptyList() else config.costItems
         val chosen = required.firstOrNull { countCostItems(player, it) >= it.amount }
         if (required.isNotEmpty() && chosen == null) {
             plugin.messages.send(
@@ -189,16 +225,17 @@ class NicknameService(private val plugin: TitleForgePlugin) {
         val event = NicknameChangeEvent(player, profile.nickname, nickname)
         if (!event.callEvent()) return
 
-        if (chargeMoney && !economy.withdraw(player, amount)) {
-            plugin.messages.send(player, "nickname.need-money", "amount" to economy.format(amount))
+        if (chargeMoney && !wallet.withdraw(player, amount)) {
+            plugin.messages.send(player, "nickname.need-money", "amount" to wallet.format(amount))
             return
         }
         if (chosen != null) consumeCostItems(player, chosen)
 
         commitNickname(player, profile, event.newNickname, touchCooldown = true)
 
+        if (free) plugin.messages.send(player, "nickname.first-free")
         if (chargeMoney) {
-            plugin.messages.send(player, "nickname.paid-money", "amount" to economy.format(amount))
+            plugin.messages.send(player, "nickname.paid-money", "amount" to wallet.format(amount))
         }
         if (chosen != null) {
             plugin.messages.send(

@@ -111,6 +111,7 @@ nickname:
   need-item: '<red>아이템이 부족합니다. <gray>필요: <white><item> <amount>개'
   paid-money: '<gray>- <white><amount></white> <gray>차감되었습니다.'
   paid-item: '<gray>- <white><item> <amount>개</white> <gray>소모되었습니다.'
+  first-free: '<green>첫 닉네임 변경이라 비용 없이 바꿨습니다.</green> <gray>다음부터는 비용이 듭니다.</gray>'
 
 gui:
   main-title: '<dark_gray>칭호 시스템'
