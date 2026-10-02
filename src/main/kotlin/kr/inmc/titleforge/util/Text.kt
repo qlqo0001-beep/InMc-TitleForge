@@ -71,6 +71,12 @@ object Text {
         }
     }
 
+    /**
+     * 서식이 들어 있는가 — MiniMessage 태그(`<`)나 레거시 색 코드(`&3` `§l` `&#rrggbb`).
+     * 레거시만 쓴 칭호(`&3&l[&4&l깔깔슨&3&l]`)도 서식이다 — `<` 만 보면 그대로 이어 붙여 색이 뒤로 번진다(테섭 2026-10-02).
+     */
+    fun hasFormatting(raw: String): Boolean = raw.indexOf('<') >= 0 || LEGACY_CODE.containsMatchIn(raw)
+
     /** 유저가 입력한 값을 안전하게 넣을 때 사용 (서식 태그 무력화). */
     fun escape(raw: String): String = MM.escapeTags(raw)
 

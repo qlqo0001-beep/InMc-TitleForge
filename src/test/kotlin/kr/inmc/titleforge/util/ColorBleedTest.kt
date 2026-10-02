@@ -59,6 +59,20 @@ class ColorBleedTest {
     }
 
     @Test
+    fun `레거시 색만 쓴 칭호도 가둔다 — 다음 줄 닉네임이 칭호 색이 되지 않는다`() {
+        // 테섭 2026-10-02: 칭호 '&3&l[&4&l깔깔슨&3&l]' 뒤 줄의 닉네임이 청록·굵게 됐다(`<` 가 없어 그대로 이어 붙였다).
+        val title = "&3&l[&4&l깔깔슨&3&l]"
+        kotlin.test.assertTrue(Text.hasFormatting(title))
+        kotlin.test.assertTrue(Text.hasFormatting("<red>x"))
+        kotlin.test.assertTrue(Text.hasFormatting("§a중"))
+        kotlin.test.assertFalse(Text.hasFormatting("깔깔슨 123"))
+        kotlin.test.assertFalse(Text.hasFormatting("A & Z"), "& 뒤가 색 코드가 아니면 평문")
+
+        val colors = colorsOf(isolated("${ph}나인", title))
+        assertEquals("none", colors["나인"], "칭호 색이 닉네임으로 번졌다")
+    }
+
+    @Test
     fun `값에 reset 이 있어도 깨지지 않는다`() {
         // 회귀 지점: CMI 가 §2중§r 을 돌려주던 실제 상황.
         val value = Text.fromLegacy("§2중§r")

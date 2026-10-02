@@ -93,8 +93,8 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
                 when {
                     // 옵션을 켜 두면 예전처럼 그대로 흘려보낸다.
                     bleed -> value
-                    // 서식이 없는 값(숫자·평문)은 번질 것이 없어 그대로 넣는다.
-                    value.indexOf('<') < 0 -> value
+                    // 서식이 없는 값(숫자·평문)은 번질 것이 없어 그대로 넣는다. 레거시 색 코드만 쓴 값도 서식이다.
+                    !Text.hasFormatting(value) -> value
                     else -> "<${nameByToken.getOrPut(token) { register(value) }}>"
                 }
             }
