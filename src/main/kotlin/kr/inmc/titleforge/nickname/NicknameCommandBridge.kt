@@ -1,6 +1,7 @@
 package kr.inmc.titleforge.nickname
 
 import kr.inmc.titleforge.TitleForgePlugin
+import kr.inmc.titleforge.command.TitleForgeCommand
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -139,7 +140,9 @@ class NicknameCommandBridge(private val plugin: TitleForgePlugin) : Listener {
         // `/it setnick ninesik 나인` 의 닉네임 인자처럼, 플레이어가 아닌 자리에도 닉네임과
         // 똑같은 값이 정상적으로 들어오기 때문이다. 대신 [TitleForgeCommand] 가 대상 자리에서만
         // 닉네임을 직접 알아듣는다 (`ProfileManager.resolveBlocking`).
-        if (plugin.getCommand(label) != null) return null
+        // `plugin.getCommand(label)` 로는 알 수 없다 — Brigadier 로 등록한 명령어는 `PluginCommand` 가
+        // 아니라서 늘 null 이 돌아온다.
+        if (label in TitleForgeCommand.LABELS) return null
 
         val index = plugin.nicknameIndex
         for (position in 1 until parts.size) {

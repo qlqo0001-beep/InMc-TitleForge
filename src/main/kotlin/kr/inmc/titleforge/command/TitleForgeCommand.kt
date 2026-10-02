@@ -43,9 +43,9 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
     fun register(owner: JavaPlugin) {
         owner.lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
             event.registrar().register(
-                "it",
+                LABEL,
                 "칭호/인장/닉네임 명령어",
-                listOf("titleforge", "tf", "칭호"),
+                ALIASES,
                 this,
             )
         }
@@ -760,7 +760,16 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
         return profile.owned(type).toList()
     }
 
-    private companion object {
+    companion object {
+        const val LABEL = "it"
+        val ALIASES = listOf("titleforge", "tf", "칭호")
+
+        /**
+         * 이름과 별칭 전부(소문자). [kr.inmc.titleforge.nickname.NicknameCommandBridge] 가 자기
+         * 명령어를 알아보는 데 쓴다.
+         */
+        val LABELS: Set<String> = (ALIASES + LABEL).toSet()
+
         const val ADMIN = "titleforge.admin"
         const val USE = "titleforge.use"
 

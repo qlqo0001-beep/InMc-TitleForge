@@ -4,6 +4,15 @@
 
 ---
 
+## 2026-10-02 — 명령어 다리가 `/it` 인자까지 바꾸던 문제
+
+- `NicknameCommandBridge` 는 자기 명령어를 건너뛰려고 `plugin.getCommand(label)` 을 봤는데, Brigadier 로 등록한
+  `/it` 은 `PluginCommand` 가 아니라 **늘 null** 이었다. 그래서 접속자의 닉네임과 같은 인자가 그 사람의 아이디로 바뀌었다
+  (`/it create title 나인` → 칭호 ID `ninesik`, `/it setnick … 나인` → 닉네임 `ninesik`)
+- `TitleForgeCommand.LABELS`(이름·별칭)로 알아본다. 대상 자리는 지금처럼 `/it` 이 직접 닉네임을 푼다(`onlineTarget` · `resolveBlocking`)
+- 확인: 수정 전 코드로 위 두 경우가 재현되는 것과, 수정 후 `/it`·`/tf`·`/칭호`·`/inmc-titleforge:it` 은 그대로이고
+  `/lands trust 은효`·`/msg 나인 …` 은 여전히 바뀌는 것을 스텁에 대고 실행해 봤다. 빌드는 못 했다(워크스페이스 없음)
+
 ## 2026-10-02 — 다른 플러그인 다이얼로그에서도 닉네임으로 지목
 
 - Lands 의 "Add Player" 창에 닉네임을 치면 대상을 못 찾았다. 그 창은 입력값을 명령어가 아니라 다이얼로그(커스텀 클릭)로
