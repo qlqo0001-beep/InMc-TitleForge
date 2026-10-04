@@ -1,5 +1,15 @@
 # InMc-TitleForge 변경 기록
 
+---
+
+## 미배포 — 개인 표시 토글·표시명 API
+
+- 테섭 "개인설정에 닉네임·칭호·인장 on/off + 타인 인장 끄기" — core 개인설정에 4키 등록
+  (`titleforge.show-nickname/title/seal` 기본 ON, `titleforge.hide-others-seal` 기본 OFF).
+  끄면 이름표·탭·채팅·PAPI가 미설정 문구/실명으로 보인다. 타인 인장 끄기는 공유 이름표(인장 줄)를 뷰어별로 숨긴다
+- 타 플러그인 표시용 `TitleForgeApi.displayNameOf` 신설(평문, 표시 OFF면 null) + 플러그인 브릿지 `displayNameOf`.
+  core `TitleForgeNames` 가 리플렉션으로 읽는다
+
 > 이 폴더는 별도 git 저장소입니다(기본 브랜치 `claude/title-seal-system-plugin-m2b2lh`).
 
 ---
