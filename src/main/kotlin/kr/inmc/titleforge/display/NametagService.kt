@@ -425,9 +425,7 @@ class NametagService(private val plugin: TitleForgePlugin) {
     private fun selfShowsOthers(player: Player): Boolean {
         val id = player.uniqueId
         return kr.inmc.core.integration.PlayerSettings.enabled(
-            id, kr.inmc.titleforge.display.TitleForgeSettings.SHOW_NICKNAME, false,
-        ) || kr.inmc.core.integration.PlayerSettings.enabled(
-            id, kr.inmc.titleforge.display.TitleForgeSettings.SHOW_TITLE, false,
+            id, kr.inmc.titleforge.display.TitleForgeSettings.SHOW_NAME, false,
         )
     }
 
