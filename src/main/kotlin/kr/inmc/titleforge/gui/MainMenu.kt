@@ -51,6 +51,9 @@ class MainMenu(plugin: TitleForgePlugin, viewer: Player) : Menu(plugin, viewer, 
             button(size - 1, Gui.item(plugin, "gui.button.admin", gui.iconAdmin)) {
                 AdminMenu(plugin, viewer, BadgeType.TITLE).openLater()
             }
+            button(size - 2, Gui.item(plugin, "gui.button.hub", Material.COMPASS)) {
+                viewer.performCommand("메뉴 어드민")
+            }
         }
 
         button(22, Gui.item(plugin, "gui.button.close", Material.BARRIER)) { viewer.closeInventory() }
