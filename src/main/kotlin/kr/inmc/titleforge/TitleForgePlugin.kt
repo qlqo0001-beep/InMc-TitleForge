@@ -359,7 +359,7 @@ class TitleForgePlugin : JavaPlugin() {
         kr.inmc.core.integration.PlayerSettings.listen(kr.inmc.titleforge.display.TitleForgeSettings.OWNER) { player, key ->
             when (key) {
                 kr.inmc.titleforge.display.TitleForgeSettings.HIDE_OTHERS_SEAL -> nametags.refreshSealVisibility(player)
-                else -> nameDisplay.refresh(player)
+                else -> nametags.refreshSelfView(player)
             }
         }
 

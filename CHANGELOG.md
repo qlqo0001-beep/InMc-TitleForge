@@ -2,12 +2,14 @@
 
 ---
 
-## 미배포 — 개인 표시 토글·표시명 API
+## 미배포 — 본인 화면 이름표 토글·표시명 API
 
-- 테섭 "개인설정에 닉네임·칭호·인장 on/off + 타인 인장 끄기" — core 개인설정에 4키 등록
-  (`titleforge.show-nickname/title/seal` 기본 ON, `titleforge.hide-others-seal` 기본 OFF).
-  끄면 이름표·탭·채팅·PAPI가 미설정 문구/실명으로 보인다. 타인 인장 끄기는 공유 이름표(인장 줄)를 뷰어별로 숨긴다
-- 타 플러그인 표시용 `TitleForgeApi.displayNameOf` 신설(평문, 표시 OFF면 null) + 플러그인 브릿지 `displayNameOf`.
+- 테섭 "내 화면의 닉네임·칭호 on/off + 인장 끄기" — core 개인설정에 4키 등록. 전부 **본인 화면** 기준
+  (타인에게 보이는 것은 그대로 — 3D 이름표는 공유 엔티티라 글자를 뷰어별로 바꿀 수 없고 가림만 된다).
+  `show-nickname/title` (기본OFF): 본인 타인용 줄을 본인에게도 보여준다(줄이 하나라 함께 간다).
+  `show-seal` (기본ON): 본인 공유 줄(인장)을 본인에게 보여준다. `hide-others-seal` (기본OFF): 남의 공유 줄 숨김.
+  탭·채팅·PAPI는 전역 설정 그대로
+- 타 플러그인 표시용 `TitleForgeApi.displayNameOf` 신설(평문, 닉네임 없으면 null) + 플러그인 브릿지 `displayNameOf`.
   core `TitleForgeNames` 가 리플렉션으로 읽는다
 
 > 이 폴더는 별도 git 저장소입니다(기본 브랜치 `claude/title-seal-system-plugin-m2b2lh`).

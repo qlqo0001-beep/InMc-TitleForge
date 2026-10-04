@@ -5,44 +5,55 @@ import org.bukkit.Material
 
 /**
  * 타이틀포지가 core 개인 설정 창구에 올리는 것 — 플레이어 메뉴의 개인 설정 화면에 보인다.
- * 끈 건 안 보인다. 정의가 없을 때(core 가 옛 판) 기본은 켜짐이라 지금과 같다.
+ *
+ * 전부 **본인 화면** 기준이다. 타인에게 보이는 것은 바뀌지 않는다 — 3D 이름표는 공유 엔티티라
+ * 보는 사람마다 다른 글자를 보여줄 수 없고, 가림(hideEntity)만 뷰어별로 된다.
+ * 탭·채팅·PAPI는 전역 설정 그대로다.
  */
 internal object TitleForgeSettings {
 
     const val OWNER = "칭호"
 
-    /** 본인 닉네임 표시. 끄면 실명이 나온다. */
-    const val SHOW_NICKNAME = "titleforge.show-nickname"
-
-    /** 본인 칭호 표시. 끄면 미장착 문구가 나온다. */
-    const val SHOW_TITLE = "titleforge.show-title"
-
-    /** 본인 인장 표시. 끄면 미장착 문구가 나온다. */
+    /**
+     * 본인 공유 이름표(인장 줄)를 본인에게 보여주기. 기본 ON(지금까지 그대로).
+     * 끄면 본인에게 인장 줄이 안 보인다.
+     */
     const val SHOW_SEAL = "titleforge.show-seal"
 
-    /** 타인 인장 끄기. 켜면 남의 공유 이름표(인장 줄)가 안 보인다. */
+    /**
+     * 본인 타인용 이름표(닉네임·칭호 줄)를 본인에게 보여주기. 기본 OFF(지금까지 그대로 —
+     * 남에게 보이는 줄이라 본인에게는 숨겼다). 켜면 본인도 본다.
+     *
+     * 줄이 하나라 닉네임·칭호는 함께 보이거나 함께 안 보인다. 낱개로 가리려면 줄 설정을 나눠야 한다.
+     */
+    const val SHOW_NICKNAME = "titleforge.show-nickname"
+
+    /** [SHOW_NICKNAME] 과 같은 줄을 본다. 둘 중 하나라도 켜져 있으면 본인에게 보인다. */
+    const val SHOW_TITLE = "titleforge.show-title"
+
+    /** 타인 인장 끄기. 켜면 남의 공유 이름표(인장 줄)가 안 보인다. 본인 것은 그대로. */
     const val HIDE_OTHERS_SEAL = "titleforge.hide-others-seal"
 
     fun register() {
         PlayerSettings.register(
             PlayerSettings.Setting(
-                SHOW_NICKNAME, OWNER, "내 닉네임 표시", Material.NAME_TAG,
-                listOf("끄면 다른 사람에게 실명으로 보입니다."),
+                SHOW_SEAL, OWNER, "내 인장 보기", Material.NETHER_STAR,
+                listOf("끄면 내 화면에 내 인장 줄이 안 보입니다.", "남에게 보이는 것은 그대로입니다."),
                 PlayerSettings.Toggle(true),
             ),
         )
         PlayerSettings.register(
             PlayerSettings.Setting(
-                SHOW_TITLE, OWNER, "내 칭호 표시", Material.GOLDEN_HELMET,
-                listOf("끄면 다른 사람에게 칭호 없이 보입니다."),
-                PlayerSettings.Toggle(true),
+                SHOW_NICKNAME, OWNER, "내 닉네임 보기", Material.NAME_TAG,
+                listOf("켜면 내 화면에 내 닉네임 줄이 보입니다.", "칭호 줄과 함께 보입니다."),
+                PlayerSettings.Toggle(false),
             ),
         )
         PlayerSettings.register(
             PlayerSettings.Setting(
-                SHOW_SEAL, OWNER, "내 인장 표시", Material.NETHER_STAR,
-                listOf("끄면 다른 사람에게 인장 없이 보입니다."),
-                PlayerSettings.Toggle(true),
+                SHOW_TITLE, OWNER, "내 칭호 보기", Material.GOLDEN_HELMET,
+                listOf("켜면 내 화면에 내 칭호 줄이 보입니다.", "닉네임 줄과 함께 보입니다."),
+                PlayerSettings.Toggle(false),
             ),
         )
         PlayerSettings.register(

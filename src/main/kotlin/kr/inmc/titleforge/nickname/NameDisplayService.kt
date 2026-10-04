@@ -1,10 +1,8 @@
 package kr.inmc.titleforge.nickname
 
 import io.papermc.paper.event.player.AsyncChatEvent
-import kr.inmc.core.integration.PlayerSettings
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.badge.BadgeType
-import kr.inmc.titleforge.display.TitleForgeSettings
 import kr.inmc.titleforge.player.PlayerProfile
 import kr.inmc.titleforge.util.Text
 import net.kyori.adventure.text.Component
@@ -25,10 +23,6 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
     fun titleComponent(profile: PlayerProfile?): Component {
         val badge = profile?.displayTitle?.let { plugin.badges.get(BadgeType.TITLE, it) }
             ?: return Text.mini(plugin.settings.title.noneDisplay)
-        // 본인이 끄면 미장착 문구로 — 이름표·탭·채팅·PAPI가 전부 여기를 지난다.
-        if (profile != null && !PlayerSettings.enabled(profile.uuid, TitleForgeSettings.SHOW_TITLE, true)) {
-            return Text.mini(plugin.settings.title.noneDisplay)
-        }
         return badge.nameComponent.append(Text.mini(plugin.settings.display.titleSuffix))
     }
 
@@ -42,9 +36,6 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
     fun sealComponent(profile: PlayerProfile?): Component {
         val badge = profile?.seal?.let { plugin.badges.get(BadgeType.SEAL, it) }
             ?: return Text.mini(plugin.settings.sealNoneDisplay)
-        if (profile != null && !PlayerSettings.enabled(profile.uuid, TitleForgeSettings.SHOW_SEAL, true)) {
-            return Text.mini(plugin.settings.sealNoneDisplay)
-        }
         return badge.nameComponent.append(Text.mini(plugin.settings.display.sealSuffix))
     }
 
@@ -58,13 +49,8 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
         profile?.seal?.let { plugin.badges.get(BadgeType.SEAL, it) }?.displayName
             ?: plugin.settings.sealNoneDisplay
 
-    fun nicknameText(profile: PlayerProfile?, realName: String): String {
-        val nick = profile?.nickname?.takeIf { it.isNotBlank() } ?: return realName
-        if (profile != null && !PlayerSettings.enabled(profile.uuid, TitleForgeSettings.SHOW_NICKNAME, true)) {
-            return realName
-        }
-        return nick
-    }
+    fun nicknameText(profile: PlayerProfile?, realName: String): String =
+        profile?.nickname?.takeIf { it.isNotBlank() } ?: realName
 
     /**
      * 저장된 닉네임은 **입력 경계에서 이미 안전해진 MiniMessage 원문**이다
