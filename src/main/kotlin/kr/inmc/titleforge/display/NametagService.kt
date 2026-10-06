@@ -69,6 +69,18 @@ class NametagService(private val plugin: TitleForgePlugin) {
     private val hiddenFrom = ConcurrentHashMap<UUID, MutableSet<UUID>>()
 
     /**
+     * ownerUuid → 공유 이름표(인장 줄)만 숨긴 viewer uuid 집합(타인 인장 끄기).
+     * 시야 가림(`hiddenFrom`)과 따로 논다 — 시야로 숨겨진 사람에게는 건드리지 않는다.
+     */
+    private val sealHiddenFrom = ConcurrentHashMap<UUID, MutableSet<UUID>>()
+
+    /**
+     * ownerUuid → 본인에게 숨긴 layer 집합(본인 시점 설정). 타인에게 보이는 것과 무관하다.
+     * OTHERS 는 기본 숨김(남에게 보이는 줄), SHARED 는 기본 보임이다.
+     */
+    private val selfHidden = ConcurrentHashMap<UUID, MutableSet<Layer>>()
+
+    /**
      * 마지막으로 관측한 플레이어 위치. **후보군을 미리 좁히는 용도로만** 쓴다.
      *
      * [refreshVisibility] 는 owner 마다 온라인 전원을 훑는데, 각 viewer 의 좌표를 읽으려면
@@ -113,7 +125,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
         restoreVanillaNametag(player)
         // 이 사람이 소유자였던 기록과, 다른 사람 이름표를 숨기고 있던 뷰어 기록을 모두 정리한다.
         hiddenFrom.remove(player.uniqueId)
+        sealHiddenFrom.remove(player.uniqueId)
         for (viewers in hiddenFrom.values) viewers.remove(player.uniqueId)
+        for (viewers in sealHiddenFrom.values) viewers.remove(player.uniqueId)
         positions.remove(player.uniqueId)
     }
 
@@ -139,6 +153,7 @@ class NametagService(private val plugin: TitleForgePlugin) {
      */
     private fun remove(uuid: UUID, immediate: Boolean = false) {
         val handle = handles.remove(uuid) ?: return
+        selfHidden.remove(uuid)
         for (display in handle.displays.values) {
             if (immediate) {
                 runCatching { display.remove() }
@@ -182,6 +197,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
             if (refreshLayer(player, layer)) anyVisible = true
         }
         if (anyVisible) hideVanillaNametag(player)
+        // 타인 인장 끄기를 켠 뷰어들에게 공유 이름표를 맞춘다(바뀔 때만 넘어간다).
+        syncSeals(player)
+        syncSelfView(player)
     }
 
     /**
@@ -349,9 +367,101 @@ class NametagService(private val plugin: TitleForgePlugin) {
         if (currentlyHidden == !visible) return
 
         if (visible) hidden.remove(viewer.uniqueId) else hidden.add(viewer.uniqueId)
-        for (display in handle.displays.values) {
+        val sealHidden = sealHiddenFrom[owner.uniqueId]?.contains(viewer.uniqueId) == true
+        for ((layer, display) in handle.displays) {
+            // 공유 이름표(인장 줄)는 타인 인장 끄기를 켠 뷰어에게 계속 숨긴다.
+            val show = if (layer == Layer.SHARED) visible && !sealHidden else visible
             runCatching {
-                if (visible) viewer.showEntity(plugin, display) else viewer.hideEntity(plugin, display)
+                if (show) viewer.showEntity(plugin, display) else viewer.hideEntity(plugin, display)
+            }
+        }
+    }
+
+    /**
+     * 타인 인장 끄기를 한 뷰어에게, 주인들의 공유 이름표를 맞춘다.
+     *
+     * 설정 토글 때와 주인 갱신 때 부른다. 바뀌는 경우에만 viewer 스레드로 넘어간다 —
+     * 매 틱 전원을 훑으면서 태스크를 만들지 않는다.
+     */
+    fun refreshSealVisibility(viewer: Player) {
+        for ((ownerUuid, _) in handles) {
+            if (ownerUuid == viewer.uniqueId) continue
+            val owner = Bukkit.getPlayer(ownerUuid) ?: continue
+            applySeal(owner, viewer)
+        }
+    }
+
+    /** 주인 갱신 때마다 — 접속 중인 뷰어들의 인장 설정을 공유 이름표에 반영한다. */
+    private fun syncSeals(owner: Player) {
+        for (viewer in Bukkit.getOnlinePlayers()) {
+            if (viewer.uniqueId == owner.uniqueId) continue
+            applySeal(owner, viewer)
+        }
+    }
+
+    private fun applySeal(owner: Player, viewer: Player) {
+        val handle = handles[owner.uniqueId] ?: return
+        val display = handle.displays[Layer.SHARED] ?: return
+        val wantHidden = kr.inmc.core.integration.PlayerSettings.enabled(
+            viewer.uniqueId, kr.inmc.titleforge.display.TitleForgeSettings.HIDE_OTHERS_SEAL, false,
+        )
+        val tracked = sealHiddenFrom.getOrPut(owner.uniqueId) { ConcurrentHashMap.newKeySet() }
+        if (tracked.contains(viewer.uniqueId) == wantHidden) return
+        // viewer 엔티티 호출은 viewer 스레드에서만 안전하다(Folia).
+        Sched.entity(plugin, viewer) {
+            if (wantHidden) {
+                tracked.add(viewer.uniqueId)
+                runCatching { viewer.hideEntity(plugin, display) }
+            } else if (tracked.remove(viewer.uniqueId)) {
+                // 시야로 숨겨진 상태면 그대로 둔다 — 다음 시야 판정이 보여준다.
+                if (hiddenFrom[owner.uniqueId]?.contains(viewer.uniqueId) != true) {
+                    runCatching { viewer.showEntity(plugin, display) }
+                }
+            }
+        }
+    }
+
+    /** 본인이 본인 OTHERS 줄(닉네임·칭호)을 보는가. 둘 중 하나라도 켜져 있으면 본다(줄이 하나라 함께 간다). */
+    private fun selfShowsOthers(player: Player): Boolean {
+        val id = player.uniqueId
+        return kr.inmc.core.integration.PlayerSettings.enabled(
+            id, kr.inmc.titleforge.display.TitleForgeSettings.SHOW_NAME, false,
+        )
+    }
+
+    /** 본인이 본인 SHARED 줄(인장)을 보는가. 기본 보인다. */
+    private fun selfShowsShared(player: Player): Boolean =
+        kr.inmc.core.integration.PlayerSettings.enabled(
+            player.uniqueId, kr.inmc.titleforge.display.TitleForgeSettings.SHOW_SEAL, true,
+        )
+
+    /**
+     * 설정 토글 때 부른다 — 본인 화면의 본인 이름표만 맞춘다.
+     * 타인에게 보이는 것은 건드리지 않는다.
+     */
+    fun refreshSelfView(owner: Player) {
+        syncSelfView(owner)
+    }
+
+    /** 주인 갱신 때마다 — 본인에게 보이는 본인 줄을 맞춘다. 바뀌는 경우에만 넘긴다. */
+    private fun syncSelfView(owner: Player) {
+        val handle = handles[owner.uniqueId] ?: return
+        if (handle.displays.isEmpty()) return
+        applySelf(owner, handle, Layer.OTHERS, !selfShowsOthers(owner))
+        applySelf(owner, handle, Layer.SHARED, !selfShowsShared(owner))
+    }
+
+    private fun applySelf(owner: Player, handle: Handle, layer: Layer, wantHidden: Boolean) {
+        val display = handle.displays[layer] ?: return
+        val tracked = selfHidden.getOrPut(owner.uniqueId) { ConcurrentHashMap.newKeySet() }
+        if (tracked.contains(layer) == wantHidden) return
+        // 보는 쪽도 가리는 쪽도 본인이라 본인 스레드다. 그래도 스케줄로 넘긴다(관례).
+        Sched.entity(plugin, owner) {
+            if (wantHidden) {
+                tracked.add(layer)
+                runCatching { owner.hideEntity(plugin, display) }
+            } else if (tracked.remove(layer)) {
+                runCatching { owner.showEntity(plugin, display) }
             }
         }
     }
@@ -451,7 +561,7 @@ class NametagService(private val plugin: TitleForgePlugin) {
         // **승객으로 태우지 않는다.** 태우면 치장 플러그인이 붙인 승객과 세로로 쌓여
         // 이름표가 뜨거나 치장 위치가 밀리고, 차원 이동에도 제약이 생긴다.
         // 본인 전용 숨김. 인장 묶음은 본인도 봐야 하므로 건드리지 않는다.
-        if (layer == Layer.OTHERS) player.hideEntity(plugin, display)
+        if (layer == Layer.OTHERS && !selfShowsOthers(player)) player.hideEntity(plugin, display)
         display
     }.getOrElse {
         plugin.logger.warning("이름표 엔티티 생성 실패 (${player.name}): ${it.message}")

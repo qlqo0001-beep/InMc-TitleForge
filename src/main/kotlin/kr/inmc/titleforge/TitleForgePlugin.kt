@@ -203,6 +203,8 @@ class TitleForgePlugin : JavaPlugin() {
         metrics = null
         autosaveTask?.cancel()
         autosaveTask = null
+        kr.inmc.core.integration.PlayerSettings.unlisten(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
+        kr.inmc.titleforge.display.TitleForgeSettings.unregister()
         if (::ticker.isInitialized) ticker.stop()
         if (::badgeService.isInitialized) badgeService.stopFlushTask()
         if (::nametags.isInitialized) nametags.removeAll()
@@ -233,6 +235,13 @@ class TitleForgePlugin : JavaPlugin() {
         // 제외 명령어 목록이 바뀌었을 수 있으니 "여기가 플레이어 이름 칸" 기억도 버린다.
         commandBridge.clear()
     }
+
+    /**
+     * 연동용 안정 진입점 — 타 inmc 플러그인이 표시용 이름을 리플렉션으로 읽는다.
+     * 시그니처를 바꾸면 양쪽 CHANGELOG 에 적는다. 닉네임이 없거나 본인이 표시를 끄면 null.
+     */
+    fun displayNameOf(uuid: java.util.UUID): String? =
+        kr.inmc.titleforge.api.TitleForgeApi.displayNameOf(uuid)
 
     /**
      * messages.yml 어디에서나 쓸 수 있는 공용 토큰을 갱신한다.
@@ -344,6 +353,15 @@ class TitleForgePlugin : JavaPlugin() {
         // 클래스 로딩 자체를 막기 위해 존재 확인 후에만 훅을 건드린다 (맞춤 지침 7.3-12).
         // EconomyHook.setup() 이 그 확인을 안에서 하고 로그까지 남긴다.
         economy.setup()
+
+        // 개인 설정(닉네임·칭호·인장 표시, 타인 인장 끄기) — 플레이어 메뉴 화면에 보인다.
+        kr.inmc.titleforge.display.TitleForgeSettings.register()
+        kr.inmc.core.integration.PlayerSettings.listen(kr.inmc.titleforge.display.TitleForgeSettings.OWNER) { player, key ->
+            when (key) {
+                kr.inmc.titleforge.display.TitleForgeSettings.HIDE_OTHERS_SEAL -> nametags.refreshSealVisibility(player)
+                else -> nametags.refreshSelfView(player)
+            }
+        }
 
         if (server.pluginManager.getPlugin("PlaceholderAPI") != null) {
             runCatching {

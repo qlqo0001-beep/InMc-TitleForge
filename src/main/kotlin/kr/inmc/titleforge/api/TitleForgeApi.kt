@@ -62,6 +62,16 @@ object TitleForgeApi {
     /** 설정된 닉네임. 없으면 null. */
     fun nickname(uuid: UUID): String? = plugin.profiles.cached(uuid)?.nickname
 
+    /**
+     * 타 플러그인 표시용 이름(평문). 닉네임이 있으면 닉네임, 없으면 null —
+     * 부르는 쪽은 실명으로 폴백한다. MiniMessage 원문이 아니라 평문이라 다른 문자열에 박아도 안 깨진다.
+     */
+    fun displayNameOf(uuid: UUID): String? {
+        val profile = plugin.profiles.cached(uuid) ?: return null
+        val nick = profile.nickname?.takeIf { it.isNotBlank() } ?: return null
+        return kr.inmc.titleforge.util.Text.plain(kr.inmc.titleforge.util.Text.mini(nick))
+    }
+
     /** 인장 + 표시 칭호 + 닉네임 조합 컴포넌트. */
     fun nameplate(player: Player): Component =
         plugin.nameDisplay.nameplate(plugin.profiles.of(player), player.name, player)
