@@ -90,9 +90,12 @@ class Verifier(private val plugin: TitleForgePlugin) {
                 ok(!pl.nicknames.validateFormat(p, ""), "빈 닉네임이 통과했습니다")
                     ?: ok(!pl.nicknames.validateFormat(p, "a".repeat(64)), "64자 닉네임이 통과했습니다")
             },
-            Check("표시 이름 — displayNameOf 가 비어 있지 않고 이름표가 그려진다") { _, p ->
+            Check("표시 이름 — 닉네임이 있으면 displayNameOf 가 그것이고, 이름표가 그려진다") { _, p ->
+                // displayNameOf 는 닉네임이 없으면 null 이 맞다(core TitleForgeNames 가 그때 실명으로 물러난다).
+                val nickname = TitleForgeApi.nickname(p.uniqueId)
                 val display = TitleForgeApi.displayNameOf(p.uniqueId)
-                ok(!display.isNullOrBlank(), "표시 이름이 비었습니다")
+                ok(nickname == null || !display.isNullOrBlank(), "닉네임 '$nickname' 이 있는데 표시 이름이 비었습니다")
+                    ?: ok(nickname != null || display == null, "닉네임이 없는데 표시 이름 '$display' 이 있습니다")
                     ?: ok(Text.plain(TitleForgeApi.nameplate(p)).isNotBlank(), "이름표가 비었습니다")
             },
             Check("능력치 — 정의가 읽히고 내 합산이 계산된다") { _, p ->
