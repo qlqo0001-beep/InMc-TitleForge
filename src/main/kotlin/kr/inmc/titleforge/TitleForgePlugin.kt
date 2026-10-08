@@ -74,6 +74,12 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var nicknameIndex: NicknameIndex
         private set
 
+    /** 닉네임이 있는 모든 사람(오프라인 포함) — 화면 속 머리 이름 바꾸기가 패킷 스레드에서 읽는다. */
+    val nicknameDirectory = kr.inmc.titleforge.nickname.NicknameDirectory()
+
+    /** packetevents 가 있을 때 붙는 화면 속 머리 이름 바꾸기(`hook/GuiHeadNames`). 타입을 적지 않는다 — 클래스를 미리 읽지 않게(규칙 12). */
+    private var guiHeadNames: AutoCloseable? = null
+
     lateinit var dialogInput: DialogTextInput
         private set
 
@@ -201,6 +207,8 @@ class TitleForgePlugin : JavaPlugin() {
     override fun onDisable() {
         metrics?.stop()
         metrics = null
+        runCatching { guiHeadNames?.close() }
+        guiHeadNames = null
         autosaveTask?.cancel()
         autosaveTask = null
         kr.inmc.core.integration.PlayerSettings.unlisten(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
@@ -242,6 +250,12 @@ class TitleForgePlugin : JavaPlugin() {
      */
     fun displayNameOf(uuid: java.util.UUID): String? =
         kr.inmc.titleforge.api.TitleForgeApi.displayNameOf(uuid)
+
+    /**
+     * 연동용 안정 진입점 — 닉네임으로 사람의 uuid(오프라인 포함, 2026-10-07 inmc-discord `/정보`). 비교는 닉네임 정규화 규칙 그대로,
+     * 두 명 이상이 같은 닉네임이면 null. 맵만 본다(DB 없음) — 아무 스레드에서나. 시그니처를 바꾸면 양쪽 CHANGELOG 에 적는다.
+     */
+    fun uuidOfNickname(nickname: String): java.util.UUID? = nicknameDirectory.uuidOf(nickname)
 
     /**
      * messages.yml 어디에서나 쓸 수 있는 공용 토큰을 갱신한다.
@@ -327,6 +341,11 @@ class TitleForgePlugin : JavaPlugin() {
         storage = sql
         // 기동 시 1회만 동기 로드한다. 이후 모든 접근은 비동기.
         badges.replaceAll(sql.loadBadges())
+        // 화면 속 머리 이름 바꾸기용 "모든 사람의 닉네임" — 메인을 막지 않게 워커에서(규칙 1).
+        Sched.async(this) {
+            runCatching { nicknameDirectory.fill(sql.loadNicknames()) }
+                .onFailure { logger.warning("닉네임 목록을 읽지 못했습니다(화면 속 머리 이름은 접속자만 바뀝니다): ${it.message}") }
+        }
         true
     }.getOrElse {
         logger.severe("저장소 오류: ${it.message}")
@@ -360,6 +379,16 @@ class TitleForgePlugin : JavaPlugin() {
             when (key) {
                 kr.inmc.titleforge.display.TitleForgeSettings.HIDE_OTHERS_SEAL -> nametags.refreshSealVisibility(player)
                 else -> nametags.refreshSelfView(player)
+            }
+        }
+
+        // 화면 속 머리 이름 — packetevents 가 켜진 뒤(첫 틱)에 붙는다. 켜고 끄기는 설정(`display.gui-head-names`)이 패킷마다 본다.
+        if (server.pluginManager.getPlugin("packetevents") != null) {
+            Sched.global(this) {
+                runCatching {
+                    guiHeadNames = kr.inmc.titleforge.hook.GuiHeadNames(this)
+                    logger.info("packetevents 연동 활성화 (화면 속 플레이어 머리 이름 → 닉네임)")
+                }.onFailure { logger.warning("packetevents 연동 실패: ${it.message}") }
             }
         }
 

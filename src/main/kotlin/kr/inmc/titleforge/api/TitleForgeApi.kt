@@ -67,7 +67,9 @@ object TitleForgeApi {
      * 부르는 쪽은 실명으로 폴백한다. MiniMessage 원문이 아니라 평문이라 다른 문자열에 박아도 안 깨진다.
      */
     fun displayNameOf(uuid: UUID): String? {
-        val profile = plugin.profiles.cached(uuid) ?: return null
+        // 오프라인(캐시에 없음)이면 닉네임 목록에서 — 디스코드 별명 맞추기를 오프라인인 사람에게 하면 실명이 들어갔다(2026-10-08).
+        val profile = plugin.profiles.cached(uuid)
+            ?: return plugin.nicknameDirectory.get(uuid)?.let { kr.inmc.titleforge.util.Text.plain(it.nickname) }
         val nick = profile.nickname?.takeIf { it.isNotBlank() } ?: return null
         return kr.inmc.titleforge.util.Text.plain(kr.inmc.titleforge.util.Text.mini(nick))
     }

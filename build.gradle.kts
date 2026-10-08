@@ -12,7 +12,18 @@ inmc {
     pluginName = "InMc-TitleForge"
 }
 
+// packetevents API — 테섭에 깔린 플러그인 jar 에서 packetevents 패키지만 꺼내 **컴파일에만** 쓴다(새로 받지 않는다).
+// 그 jar 에는 adventure(net.kyori)도 들어 있어 통째로 올리면 Paper 의 adventure(5.x)와 컴파일 클래스패스에서 섞인다.
+// 판을 올리면 파일 이름도 같이 고친다. 쓰는 곳은 hook/GuiHeadNames 하나.
+val packetEventsApi = tasks.register<Sync>("packetEventsApi") {
+    from(zipTree(rootProject.file("server/plugins/packetevents-spigot-2.13.0.jar"))) {
+        include("com/github/retrooper/packetevents/**")
+    }
+    into(layout.buildDirectory.dir("packetevents-api"))
+}
+
 dependencies {
+    compileOnly(files(packetEventsApi))
     compileOnly(libs.placeholderapi) { isTransitive = false }
     compileOnly(libs.vault.api) { isTransitive = false }
     // MMOItems / MythicLib 는 100% 리플렉션.

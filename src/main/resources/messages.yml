@@ -2,7 +2,7 @@
 #  메시지 (MiniMessage 형식)
 #  사용 가능한 치환자는 각 줄의 <...> 태그를 참고하세요.
 # ══════════════════════════════════════════════════════════════
-prefix: '<gradient:#8be9fd:#bd93f9><bold>칭호</bold></gradient> <dark_gray>|</dark_gray> '
+prefix: '<gradient:#8be9fd:#bd93f9>[ 칭호 ]</gradient> '
 
 general:
   no-permission: '<red>권한이 없습니다.'
@@ -226,6 +226,10 @@ gui:
       name: '<red><bold>관리 메뉴'
       lore:
         - '<gray>칭호/인장 생성 · 수정 · 삭제'
+    hub:
+      name: '<gold>어드민 메뉴로'
+      lore:
+        - '<gray>각 플러그인 설정 허브로 돌아갑니다.'
     close:
       name: '<red>닫기'
       lore: []

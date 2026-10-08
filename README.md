@@ -661,6 +661,14 @@ Java 에서는 `TitleForgeApi.INSTANCE.stat(...)` 형태로 호출합니다.
 `display.tab` 과 `display.chat.enabled` 는 **기본 켜짐**입니다.
 TAB·채팅 전용 플러그인을 쓰는 서버라면 `false` 로 꺼서 충돌을 피하세요.
 
+**표시 이름**(`display.display-name-format`) — 다른 플러그인이 "이 사람 이름"으로 쓰는 Bukkit 표시 이름의 포맷입니다. 비우면 이름표
+(`nameplate-format`) 그대로, `'<nickname>'` 이면 닉네임만(없으면 실명). CMI 를 쓰면 CMI `config.yml` 의 `DisplayName.Change` 를 `false` 로
+두세요 — 켜 두면 CMI 가 자기 닉네임(없으면 실명)으로 덮어 CMI 메시지·탭·랜드 채팅에 실명이 보입니다.
+
+**화면 속 머리 이름**(`display.gui-head-names`, 기본 켬, packetevents 필요) — 상자 창으로 보내는 플레이어 머리의 이름에서 실명을 닉네임으로
+바꿉니다. 랜드 멤버 목록처럼 다른 플러그인이 실명을 적은 화면용이고(오프라인인 사람도), 플레이어에게 보이는 글자만 바뀌며 서버의 아이템은 그대로입니다.
+
+
 메시지는 전부 `messages.yml` 에 있고 MiniMessage 형식입니다.
 `/it reload` 로 `config.yml` · `messages.yml` · `stats.yml` 을 함께 다시 읽습니다.
 

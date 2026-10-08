@@ -132,6 +132,12 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
             "resetcooldown", "쿨타임초기화" -> ifAdmin(sender) { handleResetCooldown(sender, args) }
             "checkitem" -> ifAdmin(sender) { handleCheckItem(sender) }
             "player", "플레이어" -> ifAdmin(sender) { handlePlayer(sender, args) }
+            // 서버 안 자동 검증(2026-10-08) — 지급·장착·회수·닉네임 형식·표시 이름·이름표·PAPI.
+            "verify", "검증" -> ifAdmin(sender) {
+                val player = sender as? org.bukkit.entity.Player
+                if (player == null) sender.sendMessage(kr.inmc.core.util.Text.render("<red>게임 안에서만 쓸 수 있습니다.</red>"))
+                else kr.inmc.titleforge.verify.Verifier(plugin).run(player)
+            }
             "admin", "관리" -> ifAdmin(sender) {
                 player(sender)?.let { AdminMenu(plugin, it, BadgeType.TITLE).open() }
             }
@@ -784,7 +790,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
 
         val ADMIN_SUBCOMMANDS = listOf(
             "create", "delete", "edit", "give", "take", "giveall", "extend",
-            "setnick", "resetnick", "resetcooldown", "player", "checkitem", "admin", "reload",
+            "setnick", "resetnick", "resetcooldown", "player", "checkitem", "admin", "reload", "verify",
         )
 
         /** 기간 인자 추천값. */

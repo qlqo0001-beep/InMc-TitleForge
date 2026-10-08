@@ -2,6 +2,35 @@
 
 ---
 
+## 미배포 — 검증기 `/it verify`(2026-10-08)
+
+- `/it verify`(`검증`) — 서버 안 자동 검증(2026-10-08, 드랍·상점 검증기와 같은 틀). 결과는 채팅 + `plugins/<플러그인>/verify/` 파일. 칭호 정의 · 안 가진 칭호 하나를 지급→보유→표시 칭호 장착→원래 장착 복구→회수 · 닉네임 형식(빈 이름·64자 거절) ·
+  표시 이름·이름표 · 능력치 정의 · PAPI `%titleforge_nickname%`. 닉네임은 바꾸지 않는다.
+- 업적 플러그인이 초기화 때 `TitleForgeApi.revoke(Player, BadgeType, String)` 를 리플렉션으로 부른다(ARCHITECTURE "리플렉션 진입점") — 이름·인자를 바꾸면 양쪽 CHANGELOG 에.
+
+## 미배포 — 접두사 `[ 칭호 ]`(2026-10-08)
+
+- 메시지 접두사를 `칭호 |` 에서 다른 inmc 플러그인과 같은 `[ 칭호 ]` 모양으로(`messages.yml` 의 `prefix`, 테섭 사본도).
+
+## 미배포 — 표시 이름은 닉네임만 · 화면 속 머리 이름
+
+사용자 "랜드의 플레이어 이름, cmi 의 플레이어 이름 타이틀포지의 닉네임으로"(2026-10-07). 결정: CMI 는 닉네임만, 랜드 화면은 보내는 글자만 바꾸기.
+
+- `display.display-name-format`(새 열쇠, 비우면 `nameplate-format` 그대로) — Bukkit 표시 이름의 포맷. 테섭은 `'<nickname>'`.
+  CMI 가 덮지 않게 CMI `DisplayName.Change: false` 와 짝이다(전에는 CMI 가 자기 닉네임/실명으로 덮어 CMI·랜드 채팅에 실명이 보였다).
+- `display.gui-head-names`(새 열쇠, 기본 켬) + `hook/GuiHeadNames` — packetevents 가 있으면 **상자 창으로 보내는** 플레이어 머리의 이름에서 실명을
+  닉네임으로 바꾼다. 랜드 멤버 목록은 랜드가 저장한 실명을 적고 바꿀 길이 없어서다. 서버의 아이템은 그대로이고, 창 0(자기 가방)은
+  건드리지 않는다(창조 모드는 가방 칸을 클라이언트가 보낸 대로 써서 바꾼 이름이 박힌다). 대상은 프로필 uuid 로 닉네임이 있는 사람 — 랜드 머리는 프로필 uuid 가 그 사람 것이 아니어서(테섭 확인) 프로필 이름이나 **아이템 이름이 실명과 똑같을 때** 실명으로도 찾는다(`NicknameDirectory.byRealName`).
+- `nickname/NicknameDirectory` — 닉네임이 있는 **모든** 사람(오프라인 포함 — 랜드 멤버는 대개 오프라인). 켤 때 워커에서 한 번 읽고
+  (`Storage.loadNicknames`), 이름 갱신·오프라인 강제 해제 때 고친다. 패킷 스레드는 이 맵만 읽는다.
+- packetevents API 는 테섭의 `server/plugins/packetevents-spigot-2.13.0.jar` 에서 패키지만 꺼내 컴파일에만 쓴다(`build.gradle.kts` `packetEventsApi`) —
+  그 jar 의 adventure 가 Paper 의 것과 섞이지 않게.
+- 연동 진입점 `TitleForgePlugin.uuidOfNickname(String): UUID?` — 닉네임으로 사람 찾기(오프라인 포함, `NicknameDirectory.uuidOf`, 비교는 정규화 규칙 그대로,
+  두 명 이상이면 null). 디스코드 `/정보 파노` 가 "알 수 없는 플레이어" 이던 것(사용자 제보) 때문.
+- `TitleForgeApi.displayNameOf` 가 접속 중이 아닌 사람은 `NicknameDirectory` 로 답한다 — 전에는 null 이라 디스코드 `/디스코드 관리 별명 <오프라인>` 이 마크 이름으로 바꿨다.
+- 테스트 144개(`HeadNamesTest` — 통째·조각난 이름·글 속 이름·없을 때 · `NicknameDirectoryTest` — 닉네임 찾기·실명 찾기).
+- 첫 화면의 "어드민 메뉴로" 버튼 메시지(`gui.button.hub`)가 `messages.yml` 에 없던 것을 더함 — 다른 플러그인과 같은 글. `tools/verify_gui.py` 통과.
+
 ## 미배포 — 본인 화면 이름표 토글·표시명 API
 
 - 테섭 "내 화면의 닉네임·칭호 on/off + 인장 끄기" — core 개인설정에 3키 등록. 전부 **본인 화면** 기준

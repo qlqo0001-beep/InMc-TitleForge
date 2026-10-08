@@ -522,6 +522,19 @@ class SqlStorage(
         }
     }
 
+    override fun loadNicknames(): List<Triple<UUID, String, String>> = connection { conn ->
+        conn.prepareStatement("SELECT uuid, name, nickname FROM tf_player WHERE nickname IS NOT NULL AND nickname <> ''").use { st ->
+            st.executeQuery().use { rs ->
+                val out = ArrayList<Triple<UUID, String, String>>()
+                while (rs.next()) {
+                    val uuid = runCatching { UUID.fromString(rs.getString(1)) }.getOrNull() ?: continue
+                    out += Triple(uuid, rs.getString(2).orEmpty(), rs.getString(3))
+                }
+                out
+            }
+        }
+    }
+
     override fun findUuidByName(name: String): UUID? = connection { conn ->
         conn.prepareStatement("SELECT uuid FROM tf_player WHERE LOWER(name) = LOWER(?) LIMIT 1").use { st ->
             st.setString(1, name)

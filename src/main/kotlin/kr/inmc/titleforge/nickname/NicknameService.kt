@@ -308,6 +308,7 @@ class NicknameService(private val plugin: TitleForgePlugin) {
             ?: runCatching { plugin.storage.loadProfile(holderUuid, "") }.getOrNull()
             ?: return
         profile.nickname = null
+        plugin.nicknameDirectory.put(holderUuid, null, null)
         profile.nicknameResetNotice = oldNickname
         profile.markDirty()
         if (plugin.profiles.isCached(profile)) plugin.profiles.save(profile) else plugin.profiles.persist(profile)

@@ -154,6 +154,16 @@ class Settings private constructor(
         val sealSuffix: String,
         val titleSuffix: String,
         val displayName: Boolean,
+        /**
+         * 표시 이름(displayName — CMI·랜드 채팅 등 다른 플러그인이 "이 사람 이름"으로 쓰는 것)의 포맷.
+         * 비면 [nameplateFormat] 그대로. 사용자 결정 2026-10-07: 테섭은 `<nickname>` — 닉네임만.
+         */
+        val displayNameFormat: String,
+        /**
+         * 화면(상자 창) 속 플레이어 머리의 이름을 닉네임으로 바꿔 보낸다(packetevents 가 있을 때만, 사용자 결정 2026-10-07).
+         * 랜드 멤버 목록처럼 다른 플러그인이 실명을 적은 화면에 — 서버의 아이템은 바뀌지 않는다.
+         */
+        val guiHeadNames: Boolean,
         val tab: Boolean,
         val chatEnabled: Boolean,
         val chatFormat: String,
@@ -326,6 +336,8 @@ class Settings private constructor(
                 sealSuffix = config.getString("display.seal-suffix", " ")!!,
                 titleSuffix = config.getString("display.title-suffix", " ")!!,
                 displayName = config.getBoolean("display.display-name", true),
+                displayNameFormat = config.getString("display.display-name-format", "")!!,
+                guiHeadNames = config.getBoolean("display.gui-head-names", true),
                 tab = config.getBoolean("display.tab", false),
                 chatEnabled = config.getBoolean("display.chat.enabled", false),
                 chatFormat = config.getString(

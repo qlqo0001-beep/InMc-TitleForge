@@ -17,6 +17,8 @@ dependencies:
     Vault:          { load: OMIT,   required: false, join-classpath: true }
     MythicLib:      { load: OMIT,   required: false, join-classpath: true }
     MMOItems:       { load: OMIT,   required: false, join-classpath: true }
+    # 화면 속 플레이어 머리 이름 → 닉네임(hook/GuiHeadNames). 없으면 그 기능만 빠진다.
+    packetevents:   { load: OMIT,   required: false, join-classpath: true }
 
 # `commands:` 절은 paper-plugin.yml 에 없다. /it 은 TitleForgeCommand.register() 가
 # Paper 의 명령 등록기로 붙인다.

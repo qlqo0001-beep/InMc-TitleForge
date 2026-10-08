@@ -66,8 +66,11 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
      * `nameplate-format` 에는 외부 플레이스홀더(`%cmi_user_prefix%` 등)도 쓸 수 있다.
      * [player] 를 주면 치환하고, 없으면(오프라인 프로필 등) 치환 없이 조립한다.
      */
-    fun nameplate(profile: PlayerProfile?, realName: String, player: Player? = null): Component {
-        val format = plugin.settings.display.nameplateFormat
+    fun nameplate(profile: PlayerProfile?, realName: String, player: Player? = null): Component =
+        compose(plugin.settings.display.nameplateFormat, profile, realName, player)
+
+    /** [format] 으로 이름을 조립한다 — 이름표([nameplate])와 표시 이름(`display-name-format`)이 같이 쓴다. */
+    private fun compose(format: String, profile: PlayerProfile?, realName: String, player: Player?): Component {
         if (player == null) {
             return Text.mini(
                 format,
@@ -96,8 +99,13 @@ class NameDisplayService(private val plugin: TitleForgePlugin) : Listener {
         // 명령어 탭 완성·인자 치환이 쓰는 색인도 여기서 따라온다. 접속·닉네임 변경·칭호 장착·
         // 리로드 복구가 전부 이 함수를 지나므로, 호출부를 여기저기 두지 않아도 최신으로 유지된다.
         plugin.nicknameIndex.track(player)
+        // 화면 속 머리 이름 바꾸기가 읽는 "모든 사람" 목록도 같은 자리에서.
+        plugin.nicknameDirectory.put(player.uniqueId, player.name, profile?.nickname)
 
-        if (settings.displayName) player.displayName(plate)
+        if (settings.displayName) {
+            val format = settings.displayNameFormat
+            player.displayName(if (format.isEmpty()) plate else compose(format, profile, player.name, player))
+        }
         if (settings.tab) player.playerListName(plate)
         // 머리 위 여러 줄 이름표는 display.NametagService 가 담당한다.
         if (settings.nametag.enabled) plugin.nametags.refresh(player)

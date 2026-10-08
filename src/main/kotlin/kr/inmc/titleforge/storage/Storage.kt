@@ -43,6 +43,9 @@ interface Storage {
 
     fun findUuidByName(name: String): UUID?
 
+    /** 닉네임이 있는 모든 사람의 (uuid, 실명, 닉네임 원문). 켤 때 한 번 — [kr.inmc.titleforge.nickname.NicknameDirectory]. */
+    fun loadNicknames(): List<Triple<UUID, String, String>>
+
     fun isNicknameTaken(nickname: String, except: UUID?): Boolean
 
     /**
