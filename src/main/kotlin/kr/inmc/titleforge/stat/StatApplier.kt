@@ -29,6 +29,22 @@ class StatApplier(
     @Volatile
     var mythicLib: MythicLibHook? = null
 
+    /** 커스텀아이템으로 보내는 사람별 값(커스텀아이템 능력치 id → 값). core 의 바깥 출처가 이 맵을 읽는다(2026-10-09). */
+    private val customItemValues = java.util.concurrent.ConcurrentHashMap<java.util.UUID, Map<String, Double>>()
+
+    /** 커스텀아이템 공급처가 꽂혀 있나 — 켤 때가 아니라 물을 때 본다(커스텀아이템은 대개 나중에 켜진다). */
+    val customItems: Boolean get() = kr.inmc.core.integration.CustomItemHook.hasFirstParty()
+
+    /** core 에 바깥 출처로 등록한다(켤 때 한 번). 커스텀아이템이 없어도 등록은 해 둔다 — 나중에 켜지면 그때부터 읽는다. */
+    fun registerSource() {
+        kr.inmc.core.integration.CustomItemHook.registerStatSource(CustomItemStats.SOURCE) { customItemValues[it] ?: emptyMap() }
+    }
+
+    fun unregisterSource() {
+        kr.inmc.core.integration.CustomItemHook.unregisterStatSource(CustomItemStats.SOURCE)
+        customItemValues.clear()
+    }
+
     private val attributes = HashMap<String, Attribute>()
 
     /**
@@ -72,11 +88,27 @@ class StatApplier(
     fun apply(player: Player, stats: Map<String, Double>) {
         applyVanilla(player, stats)
         applyMmo(player, stats)
+        applyCustomItems(player, stats)
     }
-
     fun clear(player: Player) {
         applyVanilla(player, emptyMap())
         mythicLib?.clear(player, mmoStatIds())
+        if (customItemValues.remove(player.uniqueId) != null) kr.inmc.core.integration.CustomItemHook.invalidateStats(player.uniqueId)
+    }
+
+    /**
+     * MMO 스텟을 커스텀아이템 능력치로도 보낸다(2026-10-09). 값은 맵에 두고 core 의 바깥 출처가 읽는다 — 커스텀아이템이 사람의 능력치를
+     * 다시 셀 때 더한다. 바뀌었으면 그쪽 캐시를 버리게 한다. 커스텀아이템이 없으면 맵만 채워 두고 조용하다.
+     */
+    private fun applyCustomItems(player: Player, stats: Map<String, Double>) {
+        val values = HashMap<String, Double>()
+        for (stat in registry.ofKind(StatKind.MMO)) {
+            val target = CustomItemStats.ciStatOf(stat) ?: continue
+            val amount = stats[stat.id] ?: 0.0
+            if (amount != 0.0) values[target] = (values[target] ?: 0.0) + amount
+        }
+        val before = if (values.isEmpty()) customItemValues.remove(player.uniqueId) else customItemValues.put(player.uniqueId, values)
+        if (before != values && (before != null || values.isNotEmpty())) kr.inmc.core.integration.CustomItemHook.invalidateStats(player.uniqueId)
     }
 
     private fun applyVanilla(player: Player, stats: Map<String, Double>) {

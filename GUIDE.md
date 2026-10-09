@@ -67,7 +67,7 @@
 |---|---|
 | `config.yml` | 저장소 · 닉네임 규칙·비용 · 이름표/탭리스트 · 수집 마일스톤 |
 | `messages.yml` | 메시지 |
-| `stats.yml` | MMOItems 계열 스텟 35종 (바닐라 28종은 코드에 내장) |
+| `stats.yml` | MMOItems 계열 스텟 35종 (바닐라 28종은 코드에 내장). `ci-stat` 로 커스텀아이템 능력치 id 를 지정할 수 있다(2026-10-09, 비우면 기본 대응표 — `stat/CustomItemStats`) |
 | `places.yml` | 월드·생물군계를 보여줄 이름 — `/it admin` → **장소 이름**에서 고칩니다 |
 
 ## 연동 (전부 선택)
@@ -76,8 +76,8 @@
 |---|---|
 | PlaceholderAPI | `%titleforge_nickname%` · `%titleforge_title_display%` · `%titleforge_seal%` · `%titleforge_stat_<스텟>%` · `%titleforge_rank_title%` · `%titleforge_world%` · `%titleforge_biome%` 등 비활성 |
 | Vault | 닉네임 돈 비용 자동 면제 |
-| MythicLib | MMO 스텟 35종은 값만 보관(바닐라 28종은 그대로 동작) |
-| MMOItems | MMOItems 비용 아이템 획득 불가 |
+| MythicLib | MMO 스텟은 MythicLib 로 적용. 없고 **커스텀아이템**이 있으면 그쪽 능력치로 적용(2026-10-09, core 바깥 능력치 출처) — 둘 다 없으면 값만 보관(바닐라 28종은 그대로 동작) |
+| MMOItems | MMOItems 비용 아이템 획득 불가. 비용 아이템은 `use-type: custom` + `custom-id: inmc:아이디`(커스텀아이템, 2026-10-09)로도 둘 수 있다 |
 | 업적(inmc-achievements) | 업적 보상으로 칭호를 줄 수 있습니다 |
 
 ## 주의할 점

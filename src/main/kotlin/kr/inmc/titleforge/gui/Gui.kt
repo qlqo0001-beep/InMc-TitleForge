@@ -151,7 +151,7 @@ object Gui {
                 lore += messages.component("gui.lore.stat-vanilla", "key" to "minecraft:${stat.attributeKey}")
 
             StatKind.MMO -> {
-                val linked = plugin.statApplier.mythicLib?.available == true
+                val linked = plugin.statApplier.mythicLib?.available == true || plugin.statApplier.customItems
                 lore += messages.component(
                     if (linked) "gui.lore.stat-mmo" else "gui.lore.stat-mmo-missing",
                     "stat" to (stat.mmoStat ?: "?"),

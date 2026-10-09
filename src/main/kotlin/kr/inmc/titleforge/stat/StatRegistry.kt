@@ -88,6 +88,8 @@ class StatRegistry(private val logger: Logger) {
             logger.warning("[스텟] $id: kind 가 mmo 인데 mmo-stat 이 없습니다. 건너뜁니다.")
             return null
         }
+        // 커스텀아이템으로 보낼 능력치 id(2026-10-09). 비우면 기본 표.
+        val ciStat = node.getString("ci-stat") ?: base?.ciStat
 
         val operation = node.getString("operation")?.let { raw ->
             runCatching { AttributeModifier.Operation.valueOf(raw.uppercase()) }.getOrElse {
@@ -115,6 +117,7 @@ class StatRegistry(private val logger: Logger) {
             kind = kind,
             attributeKey = attributeKey,
             mmoStat = mmoStat,
+            ciStat = ciStat,
             operation = operation,
             displayScale = node.getDouble("display-scale", base?.displayScale ?: 1.0),
             suffix = node.getString("suffix") ?: base?.suffix ?: "",

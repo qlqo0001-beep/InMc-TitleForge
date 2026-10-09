@@ -130,6 +130,9 @@ class TitleForgePlugin : JavaPlugin() {
 
     /** MMOItems 아이템 식별. 없으면 null 이고 MMOItems 기반 비용 아이템은 인식되지 않는다. */
     var mmoItems: MMOItemsHook? = null
+
+    /** 커스텀아이템 비용 아이템(`use-type: custom`)을 알아보는 core 훅(2026-10-09). 그런 비용 아이템이 없으면 null. */
+    var customItems: kr.inmc.core.integration.CustomItemHook? = null
         private set
 
     private var autosaveTask: ScheduledTask? = null
@@ -214,6 +217,7 @@ class TitleForgePlugin : JavaPlugin() {
         kr.inmc.core.integration.PlayerSettings.unlisten(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
         kr.inmc.titleforge.display.TitleForgeSettings.unregister()
         if (::ticker.isInitialized) ticker.stop()
+        if (::statApplier.isInitialized) statApplier.unregisterSource()
         if (::badgeService.isInitialized) badgeService.stopFlushTask()
         if (::nametags.isInitialized) nametags.removeAll()
 
@@ -421,8 +425,13 @@ class TitleForgePlugin : JavaPlugin() {
             if (hook != null) {
                 logger.info("MMOItems 스텟 연동 활성화 (${mmoStats}종)")
             } else {
-                logger.info("MMOItems 미연동 — MMO 스텟 ${mmoStats}종은 값만 보관됩니다.")
+                logger.info("MMOItems 미연동 — MMO 스텟 ${mmoStats}종은 커스텀아이템이 있으면 그쪽으로, 없으면 값만 보관됩니다.")
             }
+        }
+        // 커스텀아이템(2026-10-09) — MMO 스텟을 core 의 바깥 능력치 출처로도 보낸다. 커스텀아이템은 대개 나중에 켜져 여기서 있는지 묻지 않는다.
+        statApplier.registerSource()
+        if (settings.nickname.costItems.any { it.type == Settings.ItemSourceType.CUSTOM }) {
+            customItems = kr.inmc.core.integration.CustomItemHook(logger).also { it.setup() }
         }
     }
 

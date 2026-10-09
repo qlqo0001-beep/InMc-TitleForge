@@ -166,8 +166,8 @@ gui:
     stat-name-set: '<white><stat> <gray>(<id>)'
     stat-name-unset: '<gray><stat> <dark_gray>(<id>)'
     stat-vanilla: '<green>바닐라<dark_gray> · <key> <dark_gray>(외부 플러그인 없이 적용)'
-    stat-mmo: '<light_purple>MMOItems<dark_gray> · <stat> <green>(연동됨)'
-    stat-mmo-missing: '<light_purple>MMOItems<dark_gray> · <stat> <red>(미연동 — 값만 보관)'
+    stat-mmo: '<light_purple>MMOItems·커스텀아이템<dark_gray> · <stat> <green>(연동됨)'
+    stat-mmo-missing: '<light_purple>MMOItems·커스텀아이템<dark_gray> · <stat> <red>(미연동 — 값만 보관)'
     stat-virtual: '<gray>가상 스텟<dark_gray> · API/플레이스홀더 전용'
     stat-equip-value: '<aqua>장착 스텟   <white><value>'
     stat-own-value: '<green>보유 스텟   <white><value>'
@@ -185,7 +185,7 @@ gui:
 
     # ── 스텟 종류 선택 창 ──
     stat-kind-name-vanilla: '<green><bold>바닐라 스텟'
-    stat-kind-name-mmo: '<light_purple><bold>MMOItems 스텟'
+    stat-kind-name-mmo: '<light_purple><bold>MMOItems·커스텀아이템 스텟'
     stat-kind-name-virtual: '<aqua><bold>커스텀 스텟'
     stat-kind-summary: '<gray>설정됨 <white><configured><gray> / <white><total><gray>종'
     stat-kind-open: '<yellow>클릭하여 편집'
@@ -378,7 +378,7 @@ gui:
         - '<green>보유 스텟 <dark_gray>- 보유만 해도 항상 적용'
         - ''
         - '<green>바닐라 <dark_gray>- 외부 플러그인 없이 항상 적용됩니다.'
-        - '<light_purple>MMOItems <dark_gray>- MythicLib 연동 시 적용됩니다.'
+        - '<light_purple>MMOItems <dark_gray>- MythicLib 또는 커스텀아이템 연동 시 적용됩니다.'
         - '<gray>가상 <dark_gray>- API/플레이스홀더로만 노출됩니다.'
         - ''
         - '<gold>발광 <dark_gray>- 값이 설정된 스텟'

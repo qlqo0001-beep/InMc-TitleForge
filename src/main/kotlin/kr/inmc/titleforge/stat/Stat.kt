@@ -45,6 +45,8 @@ class Stat(
     val attributeKey: String? = null,
     /** MMO 전용. MMOItems 스텟 ID (예: CRITICAL_STRIKE_CHANCE). */
     val mmoStat: String? = null,
+    /** MMO 전용. 커스텀아이템으로도 보낼 때의 능력치 id(`stats.yml` `ci-stat`). 비우면 [CustomItemStats.DEFAULTS] 표. */
+    val ciStat: String? = null,
     val operation: AttributeModifier.Operation = AttributeModifier.Operation.ADD_NUMBER,
     /** 표시 배율. 내부 0.1 = 표시 10% 인 값은 100 을 준다. 관리자는 항상 표시 단위로 입력한다. */
     val displayScale: Double = 1.0,

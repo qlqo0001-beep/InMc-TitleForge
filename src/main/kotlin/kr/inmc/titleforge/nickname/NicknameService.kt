@@ -377,6 +377,12 @@ class NicknameService(private val plugin: TitleForgePlugin) {
             // 훅이 없으면 이 항목은 절대 만족되지 않는다. 기동 시 경고로 알린다.
             Settings.ItemSourceType.MMOITEMS ->
                 plugin.mmoItems?.matches(item, cost.mmoType, cost.mmoId) == true
+            // 커스텀아이템(2026-10-09) — core 훅이 알아본 `이름공간:아이디` 가 설정과 같으면. 이름공간을 안 적었으면 아이디만 견준다.
+            Settings.ItemSourceType.CUSTOM -> {
+                val ref = plugin.customItems?.identify(item) ?: return false
+                val want = cost.customId.trim()
+                want.equals("${ref.namespace}:${ref.id}", ignoreCase = true) || (!want.contains(':') && want.equals(ref.id, ignoreCase = true))
+            }
         }
     }
 
@@ -409,6 +415,7 @@ class NicknameService(private val plugin: TitleForgePlugin) {
             if (cost.displayName.isBlank()) cost.material.name else Text.plain(Text.mini(cost.displayName))
 
         Settings.ItemSourceType.MMOITEMS -> cost.mmoId.ifBlank { cost.label }
+        Settings.ItemSourceType.CUSTOM -> cost.customId.substringAfter(':').ifBlank { cost.label }
     }
 
     companion object {

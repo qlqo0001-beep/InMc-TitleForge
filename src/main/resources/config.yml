@@ -133,6 +133,12 @@ nickname:
         mmoitems-type: CONSUMABLE
         mmoitems-id: 닉네임변경권
         amount: 1
+      # 커스텀아이템(inmc-customitems)으로 판별합니다 (2026-10-09). custom-id 는 `inmc:아이디` 또는 아이디만.
+      custom-ticket:
+        enabled: false
+        use-type: custom
+        custom-id: inmc:nickname_ticket
+        amount: 1
 
 display:
   # 플레이스홀더가 남긴 색을 뒤 내용까지 번지게 둘지.

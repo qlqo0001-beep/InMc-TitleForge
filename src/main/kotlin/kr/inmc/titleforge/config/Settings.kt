@@ -29,7 +29,7 @@ class Settings private constructor(
     enum class LengthMode { CHARS, WIDTH }
 
     /** 비용 아이템 판별 방식. */
-    enum class ItemSourceType { VANILLA, MMOITEMS }
+    enum class ItemSourceType { VANILLA, MMOITEMS, CUSTOM }
 
     /**
      * 비용 아이템 한 종류.
@@ -49,6 +49,8 @@ class Settings private constructor(
         val mmoType: String,
         /** MMOITEMS 전용. */
         val mmoId: String,
+        /** CUSTOM 전용(2026-10-09). 커스텀아이템 참조 — `inmc:아이디` 또는 아이디만. */
+        val customId: String = "",
     )
 
     class StorageSettings(
@@ -429,6 +431,7 @@ class Settings private constructor(
                 if (!node.getBoolean("enabled", false)) continue
                 val type = when (node.getString("use-type", "vanilla")!!.lowercase()) {
                     "mmoitems", "mmo" -> ItemSourceType.MMOITEMS
+                    "custom", "customitems", "inmc" -> ItemSourceType.CUSTOM
                     else -> ItemSourceType.VANILLA
                 }
                 result += CostItem(
@@ -439,6 +442,7 @@ class Settings private constructor(
                     displayName = node.getString("vanilla-name", "")!!,
                     mmoType = node.getString("mmoitems-type", "")!!,
                     mmoId = node.getString("mmoitems-id", "")!!,
+                    customId = node.getString("custom-id", "")!!,
                 )
             }
             return result

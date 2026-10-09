@@ -626,6 +626,11 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
             sender,
             Text.mini("<gray>MMOItems: <white><v>", "v" to (mmo ?: "아님 (MMOItems 태그 없음)")),
         )
+        val custom = (plugin.customItems ?: kr.inmc.core.integration.CustomItemHook(plugin.logger).also { it.setup() }).identify(item)
+        messages.sendRaw(
+            sender,
+            Text.mini("<gray>커스텀아이템: <white><v>", "v" to (custom?.let { "${it.namespace}:${it.id}" } ?: "아님")),
+        )
 
         val costItems = plugin.settings.nickname.costItems
         if (costItems.isEmpty()) {
@@ -637,6 +642,7 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
             val expected = when (cost.type) {
                 Settings.ItemSourceType.VANILLA -> "${cost.material.name} / 이름 '${cost.displayName.ifBlank { "(검사 안 함)" }}'"
                 Settings.ItemSourceType.MMOITEMS -> "${cost.mmoType} / ${cost.mmoId}"
+                Settings.ItemSourceType.CUSTOM -> cost.customId
             }
             messages.sendRaw(
                 sender,

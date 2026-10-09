@@ -101,6 +101,18 @@ class Verifier(private val plugin: TitleForgePlugin) {
             Check("능력치 — 정의가 읽히고 내 합산이 계산된다") { _, p ->
                 ok(TitleForgeApi.statDefinitions().isNotEmpty() || TitleForgeApi.stats(p.uniqueId).isEmpty(), "능력치 정의 없이 값이 있습니다")
             },
+            Check("MMO 스텟 → 커스텀아이템 — 칭호 능력치가 core 바깥 출처로 간다(2026-10-09)") { pl, p ->
+                val stat = pl.stats.ofKind(kr.inmc.titleforge.stat.StatKind.MMO).firstOrNull { kr.inmc.titleforge.stat.CustomItemStats.ciStatOf(it) != null }
+                    ?: return@Check "$SKIP 커스텀아이템으로 보낼 MMO 스텟이 없습니다"
+                val target = kr.inmc.titleforge.stat.CustomItemStats.ciStatOf(stat)!!
+                val hook = kr.inmc.core.integration.CustomItemHook
+                // 잠깐 그 스텟만 7 로 적용했다가 프로필의 합산값으로 되돌린다(apply 는 더하지 않고 바꿔 끼운다).
+                pl.statApplier.apply(p, mapOf(stat.id to 7.0))
+                val during = hook.externalStats(p.uniqueId)[target] ?: 0.0
+                pl.statApplier.apply(p, pl.profiles.cached(p.uniqueId)?.totalStats ?: emptyMap())
+                ok(hook.statSources().contains(kr.inmc.titleforge.stat.CustomItemStats.SOURCE), "출처 'titleforge' 가 core 에 등록돼 있지 않습니다")
+                    ?: ok(during == 7.0, "'${stat.id}'(→ $target) 7 을 보냈는데 출처 값이 $during")
+            },
             Check("PAPI — 토큰이 값을 준다") { pl, p ->
                 if (pl.server.pluginManager.getPlugin("PlaceholderAPI") == null) return@Check "$SKIP PlaceholderAPI 가 없습니다"
                 val value = pl.placeholders.apply(p, "%titleforge_nickname%")
