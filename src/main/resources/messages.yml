@@ -327,7 +327,7 @@ gui:
       name: '<yellow>아이콘 변경'
       lore:
         - '<gray>현재: <white><value>'
-        - '<yellow>손에 든 아이템으로 변경'
+        - '<yellow>클릭: 아이템을 올려 변경'
     hidden:
       name: '<yellow>공개 설정'
       lore:

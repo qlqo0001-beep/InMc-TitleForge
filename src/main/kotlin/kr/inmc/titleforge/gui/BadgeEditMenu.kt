@@ -84,13 +84,13 @@ class BadgeEditMenu(
             12,
             Gui.item(plugin, "gui.button.icon", badge.icon, placeholders = arrayOf("value" to badge.icon.name)),
         ) {
-            val held = viewer.inventory.itemInMainHand
-            if (held.type.isItem && held.type != Material.AIR) {
-                val current = badge() ?: return@button
-                update(current.copy(icon = held.type))
-            } else {
-                plugin.messages.send(viewer, "badge.need-held-item")
-            }
+            // 손에 든 것 대신 아이템 올리기(사용자 요청 2026-10-14) — core 화면, 재질만 쓴다.
+            CoreMenus.open(plugin, viewer, kr.inmc.core.gui.ItemInputMenu(
+                plugin, viewer, "아이콘 — 아이템 올리기", listOf("<gray>올린 아이템의 재질이 아이콘이 됩니다.</gray>"), null, "아이콘으로", { openLater() },
+            ) { stack ->
+                badge()?.let { current -> if (stack.type.isItem) update(current.copy(icon = stack.type)) }
+                openLater()
+            })
         }
 
         button(

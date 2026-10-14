@@ -32,6 +32,11 @@ class TitleDecorateMenu(
             Text.mini("<dark_gray>" + Text.escape(style.toMini())),
         )))
 
+        // 색표에 없는 색은 RGB 로(core 색 고르기 — 사용자 요청 2026-10-14). 고른 색은 이 창의 것이고 [적용]을 눌러야 들어간다.
+        rgbButton(SLOT_RGB_BRACKET, "괄호 색", style.bracketColor) { hex -> style = style.copy(bracketColor = hex) }
+        rgbButton(SLOT_RGB_START, "글자 시작 색", style.start) { hex -> style = style.copy(start = hex) }
+        rgbButton(SLOT_RGB_END, "글자 끝 색(그라데이션)", style.end ?: style.start) { hex -> style = style.copy(end = hex) }
+
         for ((index, bracket) in TitleStyle.Bracket.entries.withIndex()) {
             val selected = bracket == style.bracket
             button(BRACKET_ROW + index, Items.of(Material.PAPER, Text.mini((if (selected) "<green>▶ " else "<white>") + Text.escape(bracket.label)),
@@ -95,10 +100,27 @@ class TitleDecorateMenu(
         fill()
     }
 
+    private fun rgbButton(slot: Int, label: String, current: String, change: (String) -> Unit) {
+        button(slot, Items.of(Material.PAINTING, Text.mini("<yellow>$label — RGB 로 고르기"), listOf(
+            Text.mini("<gray>지금: <color:$current>■■■</color> <dark_gray>$current"),
+            Text.mini("<gray>색표 + R·G·B 를 한 칸씩 다듬는 창"),
+            Component.empty(),
+            Text.mini("<yellow>▶ 클릭"),
+        ))) {
+            CoreMenus.open(plugin, viewer, kr.inmc.core.gui.ColorPickMenu(plugin, viewer, label, null, current, false, { openLater() }) { hex ->
+                if (hex != null) change(hex)
+                openLater()
+            })
+        }
+    }
+
     private class Swatch(val name: String, val hex: String, val material: Material)
 
     companion object {
+        const val SLOT_RGB_BRACKET = 2
         const val SLOT_PREVIEW = 4
+        const val SLOT_RGB_START = 6
+        const val SLOT_RGB_END = 7
         const val BRACKET_ROW = 9
         const val BRACKET_COLOR_ROW = 18
         const val TEXT_COLOR_ROW = 27
