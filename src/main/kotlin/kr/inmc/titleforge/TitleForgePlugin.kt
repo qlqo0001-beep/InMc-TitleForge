@@ -167,6 +167,7 @@ class TitleForgePlugin : JavaPlugin() {
         stats.reload(loadStatsConfig())
         places = PlaceNames()
         loadPlaces()
+        kr.inmc.core.integration.PlaceNames.register(placeNamesProvider)
         placeTracker = PlaceTracker(this)
         statApplier = StatApplier(logger, stats)
         statApplier.refreshDefinitions()
@@ -229,6 +230,7 @@ class TitleForgePlugin : JavaPlugin() {
         kr.inmc.core.integration.PlayerSettings.unlisten(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
         kr.inmc.titleforge.display.TitleForgeSettings.unregister()
         kr.inmc.core.integration.Vanish.unregisterAll(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
+        kr.inmc.core.integration.PlaceNames.unregister(placeNamesProvider)
         if (::ticker.isInitialized) ticker.stop()
         if (::statApplier.isInitialized) statApplier.unregisterSource()
         if (::badgeService.isInitialized) badgeService.stopFlushTask()
@@ -286,6 +288,23 @@ class TitleForgePlugin : JavaPlugin() {
         if (!::places.isInitialized) return null
         val raw = places.biome(key)?.takeIf { it.isNotBlank() } ?: return null
         return kr.inmc.titleforge.util.Text.plain(kr.inmc.titleforge.util.Text.mini(raw)).trim().takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * core 장소 이름 창구의 공급처(2026-10-15) — inmc-worlds 의 월드 화면이 이름을 읽고 정하고, essentials `/바이옴찾기` 가 읽는다.
+     * 값은 places.yml 의 MiniMessage 원문 — 관리자가 넣은 `&`/`§` 는 MiniMessage 태그로 바꿔 넘긴다([Text.fromLegacy], 규칙 10).
+     * 정하기는 메인 스레드(GUI 로 고친 것과 같은 길 — [savePlaces]).
+     */
+    private val placeNamesProvider = object : kr.inmc.core.integration.PlaceNames.Provider {
+        override fun world(id: String): String? = if (::places.isInitialized) places.world(id)?.let(Text::fromLegacy) else null
+
+        override fun biome(key: String): String? = if (::places.isInitialized) places.biome(key)?.let(Text::fromLegacy) else null
+
+        override fun setWorld(id: String, mini: String?) {
+            if (!::places.isInitialized) return
+            places.set(PlaceNames.Kind.WORLD, places.keyFor(PlaceNames.Kind.WORLD, id), mini)
+            savePlaces()
+        }
     }
 
     /**

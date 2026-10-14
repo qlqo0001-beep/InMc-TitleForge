@@ -2,6 +2,12 @@
 
 ---
 
+## 미배포 — core 장소 이름 창구의 공급처(2026-10-15)
+
+- `places.yml` 의 월드·생물군계 이름을 core `PlaceNames` 로 내놓는다(`placeNamesProvider` — 켤 때 꽂고 끌 때 뺀다). inmc-worlds 의 월드 화면이 이름을 읽고 **정하고**
+  (GUI 로 고친 것과 같은 길 — `savePlaces`), essentials `/바이옴찾기` 가 읽는다. 값은 MiniMessage — 관리자가 넣은 `&`/`§` 는 태그로 바꿔 넘긴다.
+- `biomeNameOf`(리플렉션 진입점)는 부르는 곳이 없어졌지만 옛 essentials jar 를 위해 남긴다.
+
 ## 미배포 — 칭호 아이콘은 아이템 올리기 · 칭호 꾸미기에 RGB 고르기(2026-10-14)
 
 - 사용자 요청(모든 INMC 관리 화면). 칭호·인장 편집의 아이콘은 손에 든 것 대신 core `ItemInputMenu`(재질만). 명령으로 아이콘을 정하는 길(손에 든 것)은 그대로.
