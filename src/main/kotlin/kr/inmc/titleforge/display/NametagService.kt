@@ -1,5 +1,6 @@
 package kr.inmc.titleforge.display
 
+import kr.inmc.core.integration.Vanish
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.config.Settings
 import kr.inmc.titleforge.util.Sched
@@ -56,8 +57,18 @@ class NametagService(private val plugin: TitleForgePlugin) {
         OTHERS("titleforge_nametag_others"),
     }
 
-    private class Handle {
+    /**
+     * @param vanished 투명(vanish)인 채로 만든 묶음 — 엔티티가 **기본 안 보임**이다([spawn]). [refresh] 가 지금 투명 여부와 다르면 다시
+     *   만든다(core `Vanish.set` 을 거치지 않는 투명 플러그인도 다음 갱신에 맞춰진다).
+     */
+    private class Handle(val vanished: Boolean) {
         val displays = EnumMap<Layer, TextDisplay>(Layer::class.java)
+
+        /**
+         * 기본 안 보임 묶음을 보여 준 viewer — "숨긴 적 없음"이 곧 "보임"이 아니라서 따로 센다([applyVisibility]).
+         * [vanished] 일 때만 쓴다.
+         */
+        val revealed: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
 
         /** 마지막으로 그린 원문. 같은 내용이면 다시 보내지 않는다. */
         val rendered = EnumMap<Layer, String>(Layer::class.java)
@@ -106,9 +117,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
 
     // ── 수명 주기 ──────────────────────────────────────────────────────
 
-    /** 서버 재시작 등으로 남은 유령 엔티티를 정리한다. */
+    /** 서버 재시작 등으로 남은 유령 엔티티를 정리한다. 말풍선([ChatBubbleService.TAG])도 같이. */
     fun cleanupOrphans() {
-        val tags = Layer.entries.map { it.tag }.toSet()
+        val tags = Layer.entries.map { it.tag }.toSet() + ChatBubbleService.TAG
         var removed = 0
         for (world in Bukkit.getWorlds()) {
             for (entity in world.getEntitiesByClass(TextDisplay::class.java)) {
@@ -192,9 +203,13 @@ class NametagService(private val plugin: TitleForgePlugin) {
             return
         }
 
+        // 투명 여부가 만든 때와 다르면 다시 만든다 — 기본 안 보임/보임은 엔티티를 만들 때만 정할 수 있다.
+        val vanished = Vanish.isVanished(player)
+        if (handles[player.uniqueId]?.vanished?.let { it != vanished } == true) remove(player.uniqueId, immediate = true)
+
         var anyVisible = false
         for (layer in Layer.entries) {
-            if (refreshLayer(player, layer)) anyVisible = true
+            if (refreshLayer(player, layer, vanished)) anyVisible = true
         }
         if (anyVisible) hideVanillaNametag(player)
         // 타인 인장 끄기를 켠 뷰어들에게 공유 이름표를 맞춘다(바뀔 때만 넘어간다).
@@ -205,31 +220,31 @@ class NametagService(private val plugin: TitleForgePlugin) {
     /**
      * 뷰어를 구분할 수 없는 은신 상태인가. 대상 소유 스레드에서 호출할 것.
      *
-     * 베니시는 여기서 보지 않는다 — `hidePlayer` 를 쓰는 베니시는 뷰어별로
-     * [refreshVisibility] 의 `canSee` 가 걸러 주고, 그래야 볼 권한이 있는 관리자에게는
-     * 이름표가 남는다.
+     * 투명(vanish)은 기본으로는 여기서 엔티티째 지우지 않는다 — 볼 권한(`inmc.vanish.see`)이 있는 관리자에게는
+     * 이름표가 남아야 해서, 투명인 사람의 이름표는 **기본 안 보임**으로 띄우고 볼 수 있는 사람에게만 보여 준다([spawn]).
+     * `vanish-metadata` 를 켜면 예전처럼 모두에게서 지운다.
      */
     private fun concealed(player: Player): Boolean = NametagVisibility.concealedFromEveryone(
         spectator = player.gameMode == GameMode.SPECTATOR,
         invisible = player.isInvisible,
         potion = player.hasPotionEffect(PotionEffectType.INVISIBILITY),
-        vanishedMeta = isVanished(player),
+        vanishedMeta = Vanish.isVanished(player),
         useVanishMeta = settings.vanishMetadata,
         enabled = settings.hideWhenInvisible,
     )
 
     /**
-     * `vanished` 메타데이터. CMI · EssentialsX · SuperVanish 가 공통으로 붙이는 표식이다.
-     *
-     * 표식만 읽으므로 해당 플러그인의 클래스를 참조하지 않는다 (맞춤 지침 7.3-12).
+     * 투명이 걸리거나 풀렸다(core `Vanish.listen`) — 이름표를 곧바로 지워 다음 갱신에 맞는 모양(기본 안 보임/보임)으로 다시 만든다.
+     * 시야 판정 주기(`visibility-check-ticks`)를 기다리면 그동안 투명인 사람의 자리가 이름표로 샌다.
      */
-    private fun isVanished(player: Player): Boolean =
-        runCatching { player.getMetadata("vanished").any { it.asBoolean() } }.getOrDefault(false)
+    fun onVanish(player: Player) {
+        Sched.entity(plugin, player) { rebuildFor(player) }
+    }
 
     /** @return 이 묶음이 화면에 떠 있으면 true. */
-    private fun refreshLayer(player: Player, layer: Layer): Boolean {
+    private fun refreshLayer(player: Player, layer: Layer, vanished: Boolean): Boolean {
         val content = renderLines(player, linesOf(layer))
-        val handle = handles.computeIfAbsent(player.uniqueId) { Handle() }
+        val handle = handles.computeIfAbsent(player.uniqueId) { Handle(vanished) }
 
         if (content.isEmpty()) {
             handle.displays.remove(layer)?.let { display ->
@@ -252,12 +267,16 @@ class NametagService(private val plugin: TitleForgePlugin) {
             handle.rendered.remove(layer)
             Sched.entity(plugin, cached) { runCatching { cached.remove() } }
         }
-        val display = existing ?: spawn(player, layer)?.also {
+        val display = existing ?: spawn(player, layer, handle.vanished)?.also {
             handle.displays[layer] = it
             // 새로 만든 엔티티는 누구에게도 숨겨진 적이 없다(hideEntity 상태는 엔티티별로 따로 관리됨).
             // 예전 엔티티 기준으로 기록해 둔 hiddenFrom 을 그대로 두면 "이미 숨겨져 있다"고 착각해
             // 다음 시야 판정에서 hideEntity 를 다시 부르지 않게 되므로, 여기서 비워 재판정을 강제한다.
             hiddenFrom.remove(player.uniqueId)
+            // 보여 준 기록도 옛 엔티티 기준이다 — 비워야 다음 시야 판정이 새 묶음까지 보여 준다.
+            handle.revealed.clear()
+            // 타인 인장 끄기 기록도 옛 엔티티 기준이다 — 비워야 아래 syncSeals 가 새 엔티티를 다시 숨긴다.
+            if (layer == Layer.SHARED) sealHiddenFrom.remove(player.uniqueId)
         } ?: run {
             // 생성 실패 시 캐시를 남기면 내용이 바뀌기 전까지 영영 재시도하지 않는다.
             handle.displays.remove(layer)
@@ -343,8 +362,11 @@ class NametagService(private val plugin: TitleForgePlugin) {
                         // 베니시 플러그인은 hidePlayer 로 대상을 숨긴다. 그래서 canSee 가 곧
                         // "이 뷰어에게 본체가 보이는가" 이며, 볼 권한이 있는 관리자는 true 라
                         // 이름표가 그대로 남는다.
-                        val canSee = !settings.hideWhenInvisible ||
-                            runCatching { viewer.canSee(owner) }.getOrDefault(true)
+                        // core 투명 창구도 본다 — hidePlayer 를 쓰지 않는 투명이어도 볼 권한이 없으면 숨긴다.
+                        val canSee = Vanish.canSee(viewer, owner) && (
+                            !settings.hideWhenInvisible ||
+                                runCatching { viewer.canSee(owner) }.getOrDefault(true)
+                            )
                         val lineOfSight = reachable &&
                             runCatching { viewer.hasLineOfSight(owner) }.getOrDefault(true)
                         val visible = NametagVisibility.visibleTo(
@@ -360,13 +382,22 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
     }
 
-    /** 상태가 실제로 바뀔 때만 hide/showEntity 를 호출한다. */
+    /**
+     * 상태가 실제로 바뀔 때만 hide/showEntity 를 호출한다.
+     *
+     * 투명인 채로 만든 묶음([Handle.vanished])은 기본 안 보임이라, 숨긴 기록이 없어도 아직 안 보인다 — 보여 준 기록([Handle.revealed])이
+     * 없으면 보여 준다. 그래야 나중에 들어온 사람·볼 권한이 있는 관리자에게도 보인다.
+     */
     private fun applyVisibility(owner: Player, handle: Handle, viewer: Player, visible: Boolean) {
         val hidden = hiddenFrom.getOrPut(owner.uniqueId) { ConcurrentHashMap.newKeySet() }
         val currentlyHidden = hidden.contains(viewer.uniqueId)
-        if (currentlyHidden == !visible) return
+        val reveal = visible && handle.vanished && !handle.revealed.contains(viewer.uniqueId)
+        if (currentlyHidden == !visible && !reveal) return
 
         if (visible) hidden.remove(viewer.uniqueId) else hidden.add(viewer.uniqueId)
+        if (handle.vanished) {
+            if (visible) handle.revealed.add(viewer.uniqueId) else handle.revealed.remove(viewer.uniqueId)
+        }
         val sealHidden = sealHiddenFrom[owner.uniqueId]?.contains(viewer.uniqueId) == true
         for ((layer, display) in handle.displays) {
             // 공유 이름표(인장 줄)는 타인 인장 끄기를 켠 뷰어에게 계속 숨긴다.
@@ -374,6 +405,18 @@ class NametagService(private val plugin: TitleForgePlugin) {
             runCatching {
                 if (show) viewer.showEntity(plugin, display) else viewer.hideEntity(plugin, display)
             }
+        }
+    }
+
+    /**
+     * 막 들어온 [viewer] 에게 — 투명인 채로(기본 안 보임) 떠 있는 이름표를 볼 수 있으면(`Vanish.canSee`) 보여 준다.
+     * 시야 판정(`refreshVisibility`)이 꺼져 있는 설정에서도 볼 권한이 있는 관리자가 놓치지 않게. viewer 스레드에서(접속 이벤트).
+     */
+    fun revealVanishedTo(viewer: Player) {
+        for ((ownerUuid, handle) in handles) {
+            if (!handle.vanished || ownerUuid == viewer.uniqueId || handle.displays.isEmpty()) continue
+            val owner = Bukkit.getPlayer(ownerUuid) ?: continue
+            if (Vanish.canSee(viewer, owner)) applyVisibility(owner, handle, viewer, visible = true)
         }
     }
 
@@ -413,8 +456,8 @@ class NametagService(private val plugin: TitleForgePlugin) {
                 tracked.add(viewer.uniqueId)
                 runCatching { viewer.hideEntity(plugin, display) }
             } else if (tracked.remove(viewer.uniqueId)) {
-                // 시야로 숨겨진 상태면 그대로 둔다 — 다음 시야 판정이 보여준다.
-                if (hiddenFrom[owner.uniqueId]?.contains(viewer.uniqueId) != true) {
+                // 시야로 숨겨진 상태면 그대로 둔다 — 다음 시야 판정이 보여준다. 투명인 주인은 볼 수 있는 사람에게만.
+                if (hiddenFrom[owner.uniqueId]?.contains(viewer.uniqueId) != true && Vanish.canSee(viewer, owner)) {
                     runCatching { viewer.showEntity(plugin, display) }
                 }
             }
@@ -539,9 +582,11 @@ class NametagService(private val plugin: TitleForgePlugin) {
         Sched.entity(plugin, display) { runCatching { display.teleport(target) } }
     }
 
-    private fun spawn(player: Player, layer: Layer): TextDisplay? = runCatching {
+    private fun spawn(player: Player, layer: Layer, vanished: Boolean): TextDisplay? = runCatching {
+        // 투명인 사람의 이름표는 **기본 안 보임**으로 띄운다 — 만들어지는 순간부터 새지 않게. 볼 수 있는 사람에게는 아래에서 보여 준다.
         val display = player.world.spawn(anchorOf(player, layer), TextDisplay::class.java) { entity ->
             entity.isPersistent = false
+            if (vanished) entity.isVisibleByDefault = false
             entity.scoreboardTags.add(layer.tag)
             entity.billboard = Display.Billboard.CENTER
             entity.isSeeThrough = settings.seeThrough
@@ -562,10 +607,30 @@ class NametagService(private val plugin: TitleForgePlugin) {
         // 이름표가 뜨거나 치장 위치가 밀리고, 차원 이동에도 제약이 생긴다.
         // 본인 전용 숨김. 인장 묶음은 본인도 봐야 하므로 건드리지 않는다.
         if (layer == Layer.OTHERS && !selfShowsOthers(player)) player.hideEntity(plugin, display)
+        if (vanished) revealToWatchers(player, layer, display)
         display
     }.getOrElse {
         plugin.logger.warning("이름표 엔티티 생성 실패 (${player.name}): ${it.message}")
         null
+    }
+
+    /**
+     * 기본 안 보임으로 띄운 투명인 사람의 이름표를 볼 수 있는 사람(`Vanish.canSee`)과 본인 설정대로 본인에게 보여 준다.
+     * 시야 가림은 다음 시야 판정이 맡는다(새 엔티티라 `hiddenFrom` 이 비어 다시 판정된다).
+     */
+    private fun revealToWatchers(owner: Player, layer: Layer, display: TextDisplay) {
+        val self = if (layer == Layer.SHARED) selfShowsShared(owner) else selfShowsOthers(owner)
+        if (self) owner.showEntity(plugin, display)
+        for (viewer in Bukkit.getOnlinePlayers()) {
+            if (viewer.uniqueId == owner.uniqueId || !Vanish.canSee(viewer, owner)) continue
+            if (layer == Layer.SHARED && kr.inmc.core.integration.PlayerSettings.enabled(
+                    viewer.uniqueId, TitleForgeSettings.HIDE_OTHERS_SEAL, false,
+                )
+            ) {
+                continue
+            }
+            Sched.entity(plugin, viewer) { if (display.isValid) runCatching { viewer.showEntity(plugin, display) } }
+        }
     }
 
     // ── 바닐라 이름표 숨김 ─────────────────────────────────────────────

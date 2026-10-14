@@ -8,9 +8,9 @@ import org.bukkit.Bukkit
 /**
  * **이 플러그인의 유일한 반복 태스크.**
  *
- * 이름표 · 탭리스트 · 보유 기한 만료를 한 곳에서 처리한다 (맞춤 지침 7.1-4 개정).
+ * 이름표 · 탭리스트 · 말풍선 · 보유 기한 만료를 한 곳에서 처리한다 (맞춤 지침 7.1-4 개정).
  *
- * - 세 기능이 모두 필요 없으면 태스크를 **아예 만들지 않는다.**
+ * - 표시 기능(이름표·탭리스트·말풍선)이 모두 꺼져 있으면 태스크를 **아예 만들지 않는다.**
  * - 매 주기 렌더 결과를 이전 값과 비교해 **변경분만** 전송한다.
  * - 서버 공통 값(TPS·인원·시간)은 주기마다 1회만 계산해 전 인원이 공유한다.
  * - PlaceholderAPI 파싱은 외부 확장이 스레드 안전하지 않을 수 있어 메인 스레드에서 수행한다.
@@ -28,10 +28,11 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
     fun start() {
         stop()
         val display = plugin.settings.display
-        val needed = display.nametag.enabled || display.tablist.enabled
+        // 말풍선도 따라가기·만료를 여기서 한다 — 이름표·탭이 꺼진 서버에서도 말풍선이 켜져 있으면 돌아야 한다.
+        val needed = display.nametag.enabled || display.tablist.enabled || display.chatBubble.enabled
         if (!needed) {
             // 만료만 필요한 경우에도 주기 검사는 있어야 하지만, 자동 저장 주기에 얹으면 충분하다.
-            plugin.logger.info("표시 갱신 티커: 사용 안 함 (이름표·탭리스트 모두 꺼짐)")
+            plugin.logger.info("표시 갱신 티커: 사용 안 함 (이름표·탭리스트·말풍선 모두 꺼짐)")
             return
         }
 
@@ -68,6 +69,13 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
                 Sched.entity(plugin, player) {
                     runCatching { plugin.nametags.refresh(player) }
                         .onFailure { plugin.logger.warning("이름표 갱신 실패 (${player.name}): ${it.message}") }
+                }
+            }
+            // 말풍선이 떠 있는 사람에게만 — 말이 없으면 태스크를 만들지 않는다.
+            if (display.chatBubble.enabled && plugin.bubbles.has(player.uniqueId)) {
+                Sched.entity(plugin, player) {
+                    runCatching { plugin.bubbles.refresh(player) }
+                        .onFailure { plugin.logger.warning("말풍선 갱신 실패 (${player.name}): ${it.message}") }
                 }
             }
         }

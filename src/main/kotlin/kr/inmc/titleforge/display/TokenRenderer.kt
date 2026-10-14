@@ -1,5 +1,6 @@
 package kr.inmc.titleforge.display
 
+import kr.inmc.core.integration.Vanish
 import kr.inmc.titleforge.TitleForgePlugin
 import kr.inmc.titleforge.util.Text
 import org.bukkit.Bukkit
@@ -61,8 +62,13 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         playerCache.clear()
     }
 
-    /** 여러 줄을 한 묶음으로 치환한다. 자리표시자 이름을 공유해야 하므로 줄마다 새로 만들지 않는다. */
-    fun session(): Session = Session(plugin.settings.display.colorBleed)
+    /**
+     * 여러 줄을 한 묶음으로 치환한다. 자리표시자 이름을 공유해야 하므로 줄마다 새로 만들지 않는다.
+     *
+     * @param perViewer 그린 글을 `player` 본인만 본다(탭리스트 머리말·꼬리말). 아니면(이름표·이름판 — 모두가 같은 글을 본다)
+     *   `%tf_online%` 은 투명인 사람을 뺀 수다 — 보는 사람 하나의 권한으로 센 수를 남에게 보여 주면 투명이 샌다.
+     */
+    fun session(perViewer: Boolean = false): Session = Session(plugin.settings.display.colorBleed, perViewer)
 
     /**
      * 한 번의 표시 갱신 동안의 치환 단위.
@@ -76,7 +82,7 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
      * Component 로 넘기면 그 자체가 완결된 조각이라 안쪽 서식이 밖으로 나갈 수도, 바깥 구조를
      * 깨뜨릴 수도 없다. `<reset>` 이 들어 있어도 그 조각 안에서만 작용한다.
      */
-    inner class Session(private val bleed: Boolean) {
+    inner class Session(private val bleed: Boolean, private val perViewer: Boolean) {
 
         private val values = ArrayList<Pair<String, Any?>>()
         private val nameByToken = HashMap<String, String>()
@@ -89,7 +95,7 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
             if (line.indexOf('%') < 0) return line
             return tokenPattern.replace(line) { match ->
                 val token = match.groupValues[1]
-                val value = resolve(player, token, match.value)
+                val value = resolve(player, token, match.value, perViewer)
                 when {
                     // 옵션을 켜 두면 예전처럼 그대로 흘려보낸다.
                     bleed -> value
@@ -113,11 +119,14 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         fun signature(): String = signatureParts.joinToString("")
     }
 
-    private fun resolve(player: Player, token: String, raw: String): String {
+    private fun resolve(player: Player, token: String, raw: String, perViewer: Boolean): String {
         val lower = token.lowercase()
 
         // 1) 메모리 조회로 끝나는 값은 캐시를 거치지 않는다. 맵 조회가 더 비싸다.
         cheapBuiltin(player, lower)?.let { return it }
+
+        // 접속자 수는 보는 사람마다 다르다 — 투명(vanish)인 사람은 볼 수 있는 사람에게만 센다. 세기는 전역 캐시 1벌.
+        if (lower == "tf_online") return onlineFor(player.takeIf { perViewer })
 
         // 2) 서버 공통 값은 전역 캐시 1벌을 공유한다.
         if (lower in SERVER_TOKENS) {
@@ -142,6 +151,26 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         //    CMI 등은 레거시 색 코드(§a)를 돌려주는데 MiniMessage 가 이를 거부하므로
         //    끼워 넣기 전에 MiniMessage 표기로 바꾼다. 변환 결과째로 캐시된다.
         return cached(cache, lower) { Text.fromLegacy(plugin.placeholders.apply(player, raw)) }
+    }
+
+    /**
+     * [viewer] 가 보는 접속자 수. 투명이 아닌 사람 수와 투명인 사람 수를 주기당 한 번만 세어 두고(전역 캐시) [onlineCount] 로 맞춘다.
+     * [viewer] 가 null 이면(모두가 같은 글을 보는 곳) 투명인 사람은 세지 않는다.
+     */
+    private fun onlineFor(viewer: Player?): String {
+        val visible = cached(globalCache, "tf_online") {
+            Bukkit.getOnlinePlayers().count { !Vanish.isVanished(it) }.toString()
+        }.toInt()
+        if (viewer == null) return visible.toString()
+        val vanished = cached(globalCache, VANISHED_KEY) {
+            Bukkit.getOnlinePlayers().count { Vanish.isVanished(it) }.toString()
+        }.toInt()
+        if (vanished == 0) return visible.toString()
+        return onlineCount(
+            visible, vanished,
+            viewerCanSee = viewer.hasPermission(Vanish.SEE_PERMISSION),
+            viewerVanished = Vanish.isVanished(viewer),
+        ).toString()
     }
 
     /** 기본 화폐 잔고("1,000원"). 화폐 플러그인(core `Currencies`)이 먼저, 없으면 Vault. */
@@ -184,7 +213,6 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
     private fun serverBuiltin(token: String): String = when (token) {
         "tf_tps" -> colorizeTps(Bukkit.getTPS().firstOrNull() ?: 20.0)
         "tf_mspt" -> colorizeMspt(runCatching { Bukkit.getAverageTickTime() }.getOrDefault(0.0))
-        "tf_online" -> Bukkit.getOnlinePlayers().size.toString()
         "tf_max" -> Bukkit.getMaxPlayers().toString()
         "tf_time" -> LocalDateTime.now().format(timeFormat)
         "tf_date" -> LocalDateTime.now().format(dateFormat)
@@ -218,6 +246,19 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
 
         /** 이 플러그인의 PAPI 이름. 같은 이름을 PAPI 없이도 푼다. */
         const val OWN_PREFIX = "titleforge_"
+
+        /**
+         * 보는 사람의 접속자 수 — `Vanish.canSee` 와 같은 규칙. 볼 권한이 있으면 투명인 사람([vanished])까지, 아니면 본인이 투명일 때
+         * 본인만 더한다. 보는 사람을 모르면 두 값을 false 로.
+         */
+        fun onlineCount(visible: Int, vanished: Int, viewerCanSee: Boolean, viewerVanished: Boolean): Int = visible + when {
+            viewerCanSee -> vanished
+            viewerVanished -> minOf(1, vanished)
+            else -> 0
+        }
+
+        /** 전역 캐시에서 투명인 접속자 수를 두는 열쇠 — 공백이 있어 설정의 토큰 이름과 겹칠 수 없다. */
+        const val VANISHED_KEY = "tf_online vanished"
 
         /** 옛 PAPI 자바스크립트 이름 → 같은 값을 내는 자기 이름(`titleforge_` 뒤). 설정을 안 고쳐도 자바스크립트를 부르지 않게. */
         val LEGACY_SCRIPTS = mapOf("javascript_world_name" to "world_mini", "javascript_biome" to "biome_mini")

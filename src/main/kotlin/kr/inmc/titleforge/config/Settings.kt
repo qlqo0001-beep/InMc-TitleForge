@@ -181,6 +181,52 @@ class Settings private constructor(
          * 묻지 않는다. `true` 면 예전처럼 그대로 흘려보낸다.
          */
         val colorBleed: Boolean,
+        /** 머리 위 말풍선(2026-10-10 — CMI 말풍선을 옮김). */
+        val chatBubble: ChatBubbleSettings,
+        /** 접속·퇴장·첫 접속 메시지(2026-10-10 — CMI 접속 메시지를 옮김). */
+        val joinMessages: JoinMessageSettings,
+    )
+
+    /**
+     * 공개 채팅을 말한 사람 머리 위에 잠깐 띄우는 말풍선.
+     *
+     * 시간은 밀리초로 들고 있다 — 설정은 초(소수)로 적고, 만료 판정은 표시 갱신 티커가 벽시계로 한다.
+     */
+    class ChatBubbleSettings(
+        val enabled: Boolean,
+        /** 이름표 맨 위(이름표가 꺼져 있으면 머리) 위로 얼마나 띄울지(블록). */
+        val offset: Double,
+        val showForMillis: Long,
+        /** 글자 하나마다 더하는 시간(밀리초). 긴 말은 오래 남는다. */
+        val perCharMillis: Double,
+        val maxShowForMillis: Long,
+        val scale: Float,
+        val lineWidth: Int,
+        /** 배경판 ARGB. 0 이면 투명. */
+        val background: Int,
+        val shadow: Boolean,
+        /** 이보다 긴 말은 잘라 `…` 를 붙인다. */
+        val maxLength: Int,
+    ) {
+        /** [chars] 글자짜리 말이 떠 있을 시간. 기본 + 글자당, 최대를 넘지 않는다. */
+        fun durationMillis(chars: Int): Long =
+            (showForMillis + perCharMillis * chars.coerceAtLeast(0)).toLong().coerceIn(0L, maxShowForMillis)
+    }
+
+    /**
+     * 접속·퇴장 메시지. 형식이 빈 문자열이면 그 메시지를 내보내지 않는다.
+     *
+     * @param autoHideFrom 접속자가 이 수 이상이면 메시지를 숨긴다. -1 이면 끔(CMI `AutoHideFrom`).
+     * @param filter 이름이 하나라도 걸리면 그 사람의 메시지를 숨긴다(CMI `Filter.Regex`).
+     */
+    class JoinMessageSettings(
+        val enabled: Boolean,
+        val join: String,
+        val firstJoin: String,
+        val quit: String,
+        val kick: String,
+        val autoHideFrom: Int,
+        val filter: List<Regex>,
     )
 
     /**
@@ -381,6 +427,35 @@ class Settings private constructor(
                     config.getConfigurationSection("placeholder-refresh-intervals"),
                 ),
                 refreshTicks = config.getLong("display.refresh-ticks", 20L).coerceAtLeast(1L),
+                // 테섭은 CMI 말풍선을 켜 두었다(ChatBubble.PublicMessages) — 이 절이 없는 옛 설정도 CMI 를 빼면 그대로 이어지게 기본 켬.
+                chatBubble = ChatBubbleSettings(
+                    enabled = config.getBoolean("display.chat-bubble.enabled", true),
+                    offset = config.getDouble("display.chat-bubble.offset", 0.3),
+                    showForMillis = seconds(config.getDouble("display.chat-bubble.show-for", 5.0)),
+                    perCharMillis = config.getDouble("display.chat-bubble.per-char", 0.05).coerceAtLeast(0.0) * 1000.0,
+                    maxShowForMillis = seconds(config.getDouble("display.chat-bubble.max-show-for", 10.0)),
+                    scale = config.getDouble("display.chat-bubble.scale", 1.0).coerceIn(0.1, 10.0).toFloat(),
+                    lineWidth = config.getInt("display.chat-bubble.line-width", 200).coerceIn(20, 1000),
+                    background = config.getInt("display.chat-bubble.background", 0x80000000.toInt()),
+                    shadow = config.getBoolean("display.chat-bubble.shadow", true),
+                    maxLength = config.getInt("display.chat-bubble.max-length", 120).coerceAtLeast(1),
+                ),
+                joinMessages = JoinMessageSettings(
+                    enabled = config.getBoolean("display.join-messages.enabled", true),
+                    join = config.getString("display.join-messages.join", DEFAULT_JOIN)!!,
+                    firstJoin = config.getString("display.join-messages.first-join", DEFAULT_FIRST_JOIN)!!,
+                    quit = config.getString("display.join-messages.quit", DEFAULT_QUIT)!!,
+                    kick = config.getString("display.join-messages.kick", DEFAULT_KICK)!!,
+                    autoHideFrom = config.getInt("display.join-messages.auto-hide-from", -1),
+                    filter = config.getStringList("display.join-messages.filter").mapNotNull { raw ->
+                        runCatching { Regex(raw, RegexOption.IGNORE_CASE) }.getOrElse {
+                            // Bukkit.getLogger 는 서버가 없으면(시험) 터진다 — 같은 이름의 JUL 로거.
+                            java.util.logging.Logger.getLogger("InMc-TitleForge")
+                                .warning("접속 메시지 이름 거르기 정규식 오류 '$raw' — 건너뜁니다.")
+                            null
+                        }
+                    },
+                ),
             )
 
             val gui = GuiSettings(
@@ -486,6 +561,17 @@ class Settings private constructor(
             }
             return result.sortedBy { it.first }
         }
+
+        /** 초(소수) → 밀리초. 음수는 0. */
+        private fun seconds(value: Double): Long = (value.coerceAtLeast(0.0) * 1000.0).toLong()
+
+        // 접속 메시지 기본 형식 — config.yml 에 이 절이 없는 옛 설정에도 쓰인다.
+        private const val DEFAULT_JOIN = "<dark_gray>[<green>+</green>]</dark_gray> <nameplate><gray> 님이 접속했습니다.</gray>"
+        private const val DEFAULT_FIRST_JOIN =
+            "<dark_gray>[<light_purple>+</light_purple>]</dark_gray> <nameplate><gray> 님이 처음 오셨습니다! " +
+                "<dark_gray>(<white><total></white>번째)</dark_gray></gray>"
+        private const val DEFAULT_QUIT = "<dark_gray>[<red>-</red>]</dark_gray> <nameplate><gray> 님이 나갔습니다.</gray>"
+        private const val DEFAULT_KICK = "<dark_gray>[<red>-</red>]</dark_gray> <nameplate><gray> 님이 추방되었습니다.</gray>"
 
         private fun material(name: String?, fallback: Material): Material =
             name?.let { Material.matchMaterial(it.uppercase()) } ?: fallback

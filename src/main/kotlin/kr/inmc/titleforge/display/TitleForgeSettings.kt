@@ -31,6 +31,9 @@ internal object TitleForgeSettings {
     /** 타인 인장 끄기. 켜면 남의 공유 이름표(인장 줄)가 안 보인다. 본인 것은 그대로. */
     const val HIDE_OTHERS_SEAL = "titleforge.hide-others-seal"
 
+    /** 남의 말풍선 보기(2026-10-10). 기본 ON. 끄면 머리 위 말풍선이 안 보인다 — 채팅창은 그대로. */
+    const val CHAT_BUBBLE = "titleforge.chat-bubble"
+
     fun register() {
         PlayerSettings.register(
             PlayerSettings.Setting(
@@ -51,6 +54,13 @@ internal object TitleForgeSettings {
                 HIDE_OTHERS_SEAL, OWNER, "타인 인장 끄기", Material.ENDER_EYE,
                 listOf("켜면 다른 사람의 공유 이름표(인장 줄)가 안 보입니다."),
                 PlayerSettings.Toggle(false),
+            ),
+        )
+        PlayerSettings.register(
+            PlayerSettings.Setting(
+                CHAT_BUBBLE, OWNER, "말풍선 보기", Material.PAPER,
+                listOf("끄면 머리 위 말풍선이 안 보입니다.", "채팅창의 글은 그대로입니다."),
+                PlayerSettings.Toggle(true),
             ),
         )
     }

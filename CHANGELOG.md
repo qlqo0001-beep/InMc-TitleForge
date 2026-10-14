@@ -2,6 +2,36 @@
 
 ---
 
+## 미배포 — 말풍선 · 접속 메시지 · 투명 새는 곳 · PAPI 목록(2026-10-10)
+
+CMI 를 inmc-essentials 로 바꾸는 작업(사용자 결정: 말풍선·접속 메시지는 타이틀포지에 합침, 투명이 새는 곳은 전부 고침).
+
+- **말풍선** `display/ChatBubbleService` — 공개 채팅을 이름표 위 TextDisplay 로(`display.chat-bubble` — enabled·offset·show-for·per-char·max-show-for·
+  scale·line-width·background·shadow·max-length, 기본 켬: 테섭의 CMI 말풍선이 켜져 있었다). `AsyncChatEvent` MONITOR 에서 글과 최종 `viewers()` 를 떠
+  **기본 안 보임**으로 띄우고 받는 사람에게만 `showEntity` — 거리 채팅·무시가 줄인 대로. 개인 설정 `titleforge.chat-bubble`(말풍선 보기, 기본 켬)을 끈 사람 ·
+  관전자·투명인 사람의 말은 없음. 따라가기·만료는 `DisplayTicker` 가 말풍선이 있는 사람에게만(새 타이머 없음 — `needed` 에 말풍선 조건 추가). 태그
+  `titleforge_bubble` 은 켤 때 유령 정리 목록에.
+- **접속·퇴장·첫 접속·추방 메시지** `display/JoinMessages` + `PlayerListener`(HIGH — 디스코드가 MONITOR 에서 바뀐 글을 읽는다). `display.join-messages`
+  (enabled 기본 켬 · join · first-join · quit · kick · auto-hide-from · filter). 태그 `<nameplate>` `<nickname>` `<name>` `<online>` `<total>` `<reason>`, CMI 식
+  `[playerName]` `[totalUsers]` `[onlinePlayers]` 도. `<total>` 은 `tf_player` 수를 켤 때 워커에서 세고 첫 접속마다 더한다(`Storage.countPlayers`).
+  투명(들어올 때 이미 투명 포함 · 나가는 순간 투명 — 퇴장 LOWEST 에 적어 두어 투명 기능이 표식을 먼저 지워도)·`titleforge.join.silent`(새 권한, 기본 없음 —
+  LuckPerms `*`·`titleforge.*` 에는 붙으니 그 그룹엔 `false`)·이름 정규식·인원 자동 숨김이면 메시지 없음. 추방은 퇴장 이벤트의 `KICKED` 로 — 단 서버를 끄거나
+  다시 켤 때(`Bukkit.isStopping()` · 원인 `RESTART_COMMAND`)는 평범한 퇴장 문구. 접속·퇴장 문구가 없으면(투명·silent·filter·auto-hide-from·빈 형식) 디스코드에도
+  올라가지 않는다(inmc-discord 2026-10-10).
+  CMI 에서 안 옮긴 것: 서버 이동 메시지(BungeeCord), 투명 켜고 끌 때의 가짜 접속/퇴장(투명 기능 몫), 첫 접속 킷·첫 스폰·이벤트 명령(essentials 몫).
+- **투명 새는 곳** — core `Vanish`: 이름표 은신 판정이 core `Vanish.isVanished`(꺼진 플러그인의 표식은 안 셈)를 쓰고, 투명인 사람의 이름표는 기본 안 보임으로
+  띄워 볼 권한(`inmc.vanish.see`)이 있는 사람과 본인에게만 보인다. `Vanish.listen` 으로 투명이 바뀌는 순간 다시 만든다(시야 판정 10틱을 기다리던 틈 없앰).
+  core `Vanish.set` 을 거치지 않는 투명 플러그인(CMI 등)도 갱신마다 만든 때의 투명 여부와 견주어 다시 만든다. 기본 안 보임 이름표는 나중에 들어온 사람·볼
+  권한이 있는 관리자에게도 보여 준다(접속 때 + 시야 판정 — 보여 준 사람을 따로 센다).
+  시야 판정·타인 인장 다시 보이기도 `Vanish.canSee` 를 본다. `%tf_online%` 은 탭리스트에서만 보는 사람마다(볼 권한이 있으면 투명인 사람까지), 모두가 같은 글을
+  보는 이름표·이름판(`nameplate-format` — 채팅·접속 메시지·PAPI)에서는 투명인 사람을 뺀 수. `/it` 이름 제안 →
+  `Vanish.visibleNames(sender)`. 다른 플러그인 명령의 닉네임 제안(`NicknameCommandBridge`)도 투명인 사람은 볼 수 있는 사람에게만.
+- 이름표를 새로 만들 때 타인 인장 끄기 기록도 비운다 — 전에는 월드 이동 뒤 새 인장 줄이 끈 사람에게 다시 보였다.
+- **연동 진입점 `TitleForgePlugin.biomeNameOf(key: String): String?`**(리플렉션용) — 생물군계 id 의 `places.yml` 이름을 평문으로(안 바꿨으면 null). inmc-essentials `/바이옴찾기` 가 이름으로 찾고 보여 준다. 시그니처를 바꾸면 양쪽 CHANGELOG 에.
+- PAPI `getPlaceholders()` — 고정 이름 + `<…>` 틀 + 지금 있는 스텟(`stat_`·`stat_equip_`·`stat_own_`)·칭호·인장(`has_`·`expiry_`·`expiry_seconds_`) id. 식별자·키는 그대로.
+- 테스트(`ChatBubbleJoinSettingsTest` — 절이 없을 때 기본값·떠 있는 시간·정규식·CMI 토큰, `JoinOnlineRulesTest` — 메시지 숨김 조건·`<online>`·
+  `%tf_online%` 셈). `tools/verify_gui.py` 통과.
+
 ## 미배포 — MMO 스텟·비용 아이템을 커스텀아이템으로도(2026-10-09)
 
 - MMO 종류 스텟이 MythicLib 뿐 아니라 **커스텀아이템**으로도 간다 — core `CustomItemHook.registerStatSource("titleforge")`, `stat/CustomItemStats` 기본 대응표

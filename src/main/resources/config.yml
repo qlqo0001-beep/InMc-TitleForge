@@ -173,7 +173,47 @@ display:
   chat:
     enabled: true
     format: '<nameplate><dark_gray> » </dark_gray><white><message></white>'
-  # 표시 갱신 티커 주기(틱). 이름표·탭리스트가 모두 꺼져 있으면 태스크를 만들지 않습니다.
+  # ── 말풍선 ── 공개 채팅을 말한 사람 머리 위(이름표 위)에 잠깐 띄웁니다.
+  # 채팅을 받은 사람(거리 채팅이면 범위 안)에게만 보이고, 개인 설정 '말풍선 보기'를 끈 사람에게는 안 보입니다.
+  # 관전자·투명(vanish)인 사람의 말은 띄우지 않습니다.
+  chat-bubble:
+    enabled: true
+    # 이름표 맨 위(이름표가 꺼져 있으면 머리) 위로 띄울 높이(블록)
+    offset: 0.3
+    # 떠 있는 시간(초) = show-for + 글자 수 × per-char, 최대 max-show-for
+    show-for: 5.0
+    per-char: 0.05
+    max-show-for: 10.0
+    # 글자 크기 배율 (1.0 = 이름표와 같은 크기)
+    scale: 1.0
+    # 이 너비(픽셀)를 넘으면 줄을 바꿉니다
+    line-width: 200
+    # 배경판 색상 ARGB 정수. 0 이면 투명. 예) -2147483648 = 0x80000000 → 50% 검정
+    background: -2147483648
+    # 글자 그림자
+    shadow: true
+    # 이보다 긴 말은 잘라 … 을 붙입니다 (글자 수)
+    max-length: 120
+  # ── 접속·퇴장 메시지 ── 바닐라 '…님이 게임에 참여했습니다' 를 바꿉니다.
+  # 쓸 수 있는 태그: <nameplate>(칭호·닉네임 — nameplate-format) <nickname>(닉네임, 없으면 아이디) <name>(아이디)
+  #   <online>(지금 접속자 수) <total>(이 서버에 온 사람 수) · kick 은 <reason>(추방 사유)도
+  #   CMI 식 [playerName] [totalUsers] [onlinePlayers] 도 그대로 됩니다.
+  # 형식을 '' 로 비우면 그 메시지는 나가지 않습니다. 투명(vanish)인 사람과 titleforge.join.silent 권한이 있는 사람은 나가지 않습니다.
+  #   titleforge.join.silent 는 LuckPerms 의 '*'·'titleforge.*' 를 가진 사람에게도 붙습니다 — 그 그룹에는 false 로 빼 주세요.
+  # 서버를 끄거나 다시 켜며 모두 내보낼 때는 kick 이 아니라 quit 문구가 나갑니다.
+  # 접속·퇴장 문구가 없으면(투명·silent·filter·auto-hide-from·빈 형식) 디스코드에도 올라가지 않습니다(inmc-discord 2026-10-10).
+  join-messages:
+    enabled: true
+    join: '<dark_gray>[<green>+</green>]</dark_gray> <nameplate><gray> 님이 접속했습니다.</gray>'
+    # 처음 온 사람(서버에 기록이 없는 사람)
+    first-join: '<dark_gray>[<light_purple>+</light_purple>]</dark_gray> <nameplate><gray> 님이 처음 오셨습니다! <dark_gray>(<white><total></white>번째)</dark_gray></gray>'
+    quit: '<dark_gray>[<red>-</red>]</dark_gray> <nameplate><gray> 님이 나갔습니다.</gray>'
+    kick: '<dark_gray>[<red>-</red>]</dark_gray> <nameplate><gray> 님이 추방되었습니다.</gray>'
+    # 접속자가 이 수 이상이면 접속·퇴장 메시지를 숨깁니다. -1 이면 끔
+    auto-hide-from: -1
+    # 이름이 이 정규식 중 하나에 걸리면 그 사람의 접속·퇴장 메시지를 숨깁니다 (대소문자 무시)
+    filter: []
+  # 표시 갱신 티커 주기(틱). 이름표·탭리스트·말풍선이 모두 꺼져 있으면 태스크를 만들지 않습니다.
   # 이 주기는 "얼마나 자주 확인하는지"일 뿐이고, 실제 값 재계산 비용은 아래
   # placeholder-refresh-intervals 가 토큰별로 따로 제한합니다.
   refresh-ticks: 1
@@ -240,6 +280,8 @@ display:
     #
     # 베니시는 뷰어별로 판정하므로, 베니시를 볼 권한이 있는 관리자에게는
     # 이름표가 계속 보입니다.
+    # 투명(vanish — 'vanished' 표식, inmc-essentials·CMI·SuperVanish)인 사람의 이름표는 이 설정과 상관없이
+    # 투명이 걸리는 순간부터 볼 권한(inmc.vanish.see)이 있는 사람에게만 보입니다.
     hide-when-invisible: true
 
     # 'vanished' 메타데이터도 은신 판정에 쓸지. (기본 꺼짐)

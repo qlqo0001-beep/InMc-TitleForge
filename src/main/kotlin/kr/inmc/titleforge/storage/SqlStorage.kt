@@ -689,6 +689,12 @@ class SqlStorage(
         }
     }
 
+    override fun countPlayers(): Int = connection { conn ->
+        conn.prepareStatement("SELECT COUNT(*) FROM tf_player").use { st ->
+            st.executeQuery().use { rs -> if (rs.next()) rs.getInt(1) else 0 }
+        }
+    }
+
     override fun collectorCount(type: BadgeType): Int = connection { conn ->
         conn.prepareStatement(
             """

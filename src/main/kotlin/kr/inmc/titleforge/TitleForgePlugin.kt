@@ -6,7 +6,9 @@ import kr.inmc.titleforge.badge.BadgeService
 import kr.inmc.titleforge.command.TitleForgeCommand
 import kr.inmc.titleforge.config.Messages
 import kr.inmc.titleforge.config.Settings
+import kr.inmc.titleforge.display.ChatBubbleService
 import kr.inmc.titleforge.display.DisplayTicker
+import kr.inmc.titleforge.display.JoinMessages
 import kr.inmc.titleforge.display.NametagService
 import kr.inmc.titleforge.display.TablistService
 import kr.inmc.titleforge.display.TokenRenderer
@@ -92,6 +94,14 @@ class TitleForgePlugin : JavaPlugin() {
     lateinit var tablist: TablistService
         private set
 
+    /** 머리 위 말풍선(2026-10-10). */
+    lateinit var bubbles: ChatBubbleService
+        private set
+
+    /** 접속·퇴장·첫 접속 메시지(2026-10-10). */
+    lateinit var joinMessages: JoinMessages
+        private set
+
     /** 이름표·탭리스트의 `%토큰%` 치환기. 재계산 주기 캐시를 들고 있다. */
     lateinit var tokens: TokenRenderer
         private set
@@ -170,6 +180,8 @@ class TitleForgePlugin : JavaPlugin() {
         chatInput = ChatTextInput(this)
         nametags = NametagService(this)
         tablist = TablistService(this)
+        bubbles = ChatBubbleService(this)
+        joinMessages = JoinMessages(this)
         rank = RankService(this)
         placeholders = PlaceholderService(logger)
         economy = EconomyHook(logger)
@@ -216,10 +228,12 @@ class TitleForgePlugin : JavaPlugin() {
         autosaveTask = null
         kr.inmc.core.integration.PlayerSettings.unlisten(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
         kr.inmc.titleforge.display.TitleForgeSettings.unregister()
+        kr.inmc.core.integration.Vanish.unregisterAll(kr.inmc.titleforge.display.TitleForgeSettings.OWNER)
         if (::ticker.isInitialized) ticker.stop()
         if (::statApplier.isInitialized) statApplier.unregisterSource()
         if (::badgeService.isInitialized) badgeService.stopFlushTask()
         if (::nametags.isInitialized) nametags.removeAll()
+        if (::bubbles.isInitialized) bubbles.removeAll()
 
         // isEnabled 는 onDisable 진입 전에 이미 false 라 Sched.async 가 동작하지 않는다.
         // 대기 중인 정의·프로필을 저장소가 닫히기 전에 직접 내보낸다.
@@ -242,6 +256,8 @@ class TitleForgePlugin : JavaPlugin() {
         badgeService.startFlushTask()
         ticker.start()
         tokens.clear()
+        // 말풍선은 짧게 사는 것이라 새 설정(높이·크기·꺼짐)으로 옮기지 않고 지운다 — 꺼졌으면 티커가 더는 지우지 않으므로 여기서.
+        bubbles.removeAll()
         nametags.refreshAll()
         tablist.clear()
         // 제외 명령어 목록이 바뀌었을 수 있으니 "여기가 플레이어 이름 칸" 기억도 버린다.
@@ -260,6 +276,17 @@ class TitleForgePlugin : JavaPlugin() {
      * 두 명 이상이 같은 닉네임이면 null. 맵만 본다(DB 없음) — 아무 스레드에서나. 시그니처를 바꾸면 양쪽 CHANGELOG 에 적는다.
      */
     fun uuidOfNickname(nickname: String): java.util.UUID? = nicknameDirectory.uuidOf(nickname)
+
+    /**
+     * 연동용 안정 진입점 — 생물군계 id(`minecraft:plains` · `terralith:arid_highlands` · 네임스페이스 없이도)의 `places.yml` 이름을 **평문**으로
+     * (2026-10-10 inmc-essentials `/바이옴찾기` 가 이름으로 찾고 보여 준다). 이름을 안 바꿨거나(지운 것 포함) 아직 켜지지 않았으면 null.
+     * 맵만 본다 — 아무 스레드에서나. 시그니처를 바꾸면 양쪽 CHANGELOG 에 적는다.
+     */
+    fun biomeNameOf(key: String): String? {
+        if (!::places.isInitialized) return null
+        val raw = places.biome(key)?.takeIf { it.isNotBlank() } ?: return null
+        return kr.inmc.titleforge.util.Text.plain(kr.inmc.titleforge.util.Text.mini(raw)).trim().takeIf { it.isNotEmpty() }
+    }
 
     /**
      * messages.yml 어디에서나 쓸 수 있는 공용 토큰을 갱신한다.
@@ -345,6 +372,8 @@ class TitleForgePlugin : JavaPlugin() {
         storage = sql
         // 기동 시 1회만 동기 로드한다. 이후 모든 접근은 비동기.
         badges.replaceAll(sql.loadBadges())
+        // 첫 접속 메시지의 <total> — 워커에서 센다.
+        joinMessages.loadTotal()
         // 화면 속 머리 이름 바꾸기용 "모든 사람의 닉네임" — 메인을 막지 않게 워커에서(규칙 1).
         Sched.async(this) {
             runCatching { nicknameDirectory.fill(sql.loadNicknames()) }
@@ -362,6 +391,7 @@ class TitleForgePlugin : JavaPlugin() {
         pm.registerEvents(PlayerListener(this), this)
         pm.registerEvents(Menu.MenuListener(), this)
         pm.registerEvents(nameDisplay, this)
+        pm.registerEvents(bubbles, this)
         pm.registerEvents(chatInput, this)
         pm.registerEvents(commandBridge, this)
         pm.registerEvents(NicknameDialogBridge(this), this)
@@ -382,8 +412,14 @@ class TitleForgePlugin : JavaPlugin() {
         kr.inmc.core.integration.PlayerSettings.listen(kr.inmc.titleforge.display.TitleForgeSettings.OWNER) { player, key ->
             when (key) {
                 kr.inmc.titleforge.display.TitleForgeSettings.HIDE_OTHERS_SEAL -> nametags.refreshSealVisibility(player)
+                kr.inmc.titleforge.display.TitleForgeSettings.CHAT_BUBBLE -> bubbles.settingChanged(player)
                 else -> nametags.refreshSelfView(player)
             }
+        }
+        // 투명이 걸리거나 풀리면 곧바로 — 이름표는 다시 만들고(기본 안 보임/보임), 말풍선은 지운다(core 가 메인 스레드에서 부른다).
+        kr.inmc.core.integration.Vanish.listen(kr.inmc.titleforge.display.TitleForgeSettings.OWNER) { player, vanished ->
+            nametags.onVanish(player)
+            bubbles.onVanish(player, vanished)
         }
 
         // 화면 속 머리 이름 — packetevents 가 켜진 뒤(첫 틱)에 붙는다. 켜고 끄기는 설정(`display.gui-head-names`)이 패킷마다 본다.

@@ -712,12 +712,12 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
                 "seal" -> ownedIds(sender, BadgeType.SEAL)
                 "unequip" -> listOf("stat", "show", "seal")
                 "nick" -> NICK_RESET_ARGS.toList()
-                "info" -> onlineNames()
+                "info" -> onlineNames(sender)
                 "rank" -> TYPES + if (admin) listOf("refresh") else emptyList()
                 "create", "delete", "edit", "giveall" -> if (admin) TYPES else emptyList()
-                "resetcooldown" -> if (admin) onlineNames() + "all" else emptyList()
+                "resetcooldown" -> if (admin) onlineNames(sender) + "all" else emptyList()
                 "give", "take", "extend", "setnick", "resetnick", "player" ->
-                    if (admin) onlineNames() else emptyList()
+                    if (admin) onlineNames(sender) else emptyList()
                 else -> emptyList()
             }
 
@@ -761,7 +761,8 @@ class TitleForgeCommand(private val plugin: TitleForgePlugin) : BasicCommand {
         return result.filter { it.lowercase().startsWith(prefix) }.sorted()
     }
 
-    private fun onlineNames(): List<String> = Bukkit.getOnlinePlayers().map { it.name }
+    /** 제안할 접속자 이름 — 투명(vanish)인 사람은 볼 수 있는 사람에게만(core `Vanish`). */
+    private fun onlineNames(sender: CommandSender): List<String> = kr.inmc.core.integration.Vanish.visibleNames(sender)
 
     private fun idsOf(rawType: String): List<String> =
         BadgeType.of(rawType)?.let { plugin.badges.ids(it).toList() } ?: emptyList()

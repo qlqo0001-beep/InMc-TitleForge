@@ -74,6 +74,9 @@ interface Storage {
 
     /** 해당 분류에서 1개 이상 보유한 인원 수. */
     fun collectorCount(type: BadgeType): Int
+
+    /** 저장된 플레이어 수(`tf_player` 행) — 첫 접속 메시지의 `<total>`. */
+    fun countPlayers(): Int
 }
 
 /** 순위 1줄. */

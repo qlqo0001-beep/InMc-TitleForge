@@ -28,7 +28,7 @@ class TablistService(private val plugin: TitleForgePlugin) {
         }
 
         // 머리말·꼬리말이 자리표시자 이름을 공유하도록 한 세션에서 처리한다.
-        val session = plugin.tokens.session()
+        val session = plugin.tokens.session(perViewer = true)
         val header = render(session, player, settings.header)
         val footer = render(session, player, settings.footer)
         val placeholders = session.placeholders()

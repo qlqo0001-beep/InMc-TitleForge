@@ -78,6 +78,29 @@ class TitleForgeValues(private val plugin: TitleForgePlugin) {
         }
     }
 
+    /**
+     * [resolve] 가 아는 이름 전부(`titleforge_` 뒤) — PAPI 목록(`getPlaceholders`)용. 고정 이름 + `<…>` 틀 + 지금 있는 스텟·칭호·인장 id 로
+     * 채운 것. **[resolve] 에 이름을 더하면 여기에도** 더한다.
+     */
+    fun names(): List<String> {
+        val out = ArrayList<String>()
+        out += STATIC_NAMES
+        out += TEMPLATE_NAMES
+        for (stat in plugin.stats.ids().sorted()) {
+            out += "stat_$stat"
+            out += "stat_equip_$stat"
+            out += "stat_own_$stat"
+        }
+        for (type in BadgeType.entries) {
+            for (id in plugin.badges.ids(type).sorted()) {
+                out += "has_${type.id}_$id"
+                out += "expiry_${type.id}_$id"
+                out += "expiry_seconds_${type.id}_$id"
+            }
+        }
+        return out
+    }
+
     /** MiniMessage → 레거시. 이름 하나를 TAB 이 초마다 묻는데 매번 파싱할 이유가 없다. 이름 수만큼만 쌓인다. */
     private val legacyNames = ConcurrentHashMap<String, String>()
 
@@ -159,4 +182,23 @@ class TitleForgeValues(private val plugin: TitleForgePlugin) {
     }
 
     private fun yesNo(value: Boolean): String = if (value) "yes" else "no"
+
+    private companion object {
+        /** 인자 없는 이름 — [resolve] 의 `equals` 갈래와 world/biome. */
+        val STATIC_NAMES = listOf(
+            "nickname", "nickname_mini", "realname", "has_nickname",
+            "title_display", "title_display_mini", "title_stat", "title_stat_mini", "seal", "seal_mini", "nameplate",
+            "title_count", "title_total", "title_percent", "seal_count", "seal_total", "seal_percent",
+            "rank_title", "rank_seal",
+            "world", "world_mini", "world_id", "biome", "biome_mini", "biome_id",
+        )
+
+        /** 인자를 받는 이름의 틀 — 순위 자리는 id 가 아니라 숫자라 틀로만. */
+        val TEMPLATE_NAMES = listOf(
+            "stat_<스텟>", "stat_equip_<스텟>", "stat_own_<스텟>",
+            "has_title_<칭호>", "has_seal_<인장>",
+            "expiry_<title|seal>_<id>", "expiry_seconds_<title|seal>_<id>",
+            "rank_top_title_<순위>", "rank_top_title_<순위>_count", "rank_top_seal_<순위>", "rank_top_seal_<순위>_count",
+        )
+    }
 }

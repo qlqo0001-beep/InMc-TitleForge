@@ -32,6 +32,9 @@ permissions:
   titleforge.info.other:
     description: 다른 플레이어 정보 조회
     default: op
+  titleforge.join.silent:
+    description: 접속·퇴장 메시지를 내보내지 않음 (관리자에게도 자동으로 붙지 않음)
+    default: false
   titleforge.admin:
     description: 칭호/인장 관리 전체 권한
     default: op

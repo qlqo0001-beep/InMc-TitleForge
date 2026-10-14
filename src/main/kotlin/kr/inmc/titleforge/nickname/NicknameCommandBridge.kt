@@ -100,6 +100,11 @@ class NicknameCommandBridge(private val plugin: TitleForgePlugin) : Listener {
             completions
         }
         val additions = index.suggestions(token)
+            // 투명(vanish)인 사람의 닉네임은 볼 수 있는 사람에게만 제안한다 — 이름 하나로 접속이 샌다.
+            .filter { (_, realName) ->
+                org.bukkit.Bukkit.getPlayerExact(realName)
+                    ?.let { kr.inmc.core.integration.Vanish.canSee(event.sender, it) } != false
+            }
             .map { it.first }
             .filter { nickname -> kept.none { it.equals(nickname, ignoreCase = true) } }
         if (additions.isEmpty() && kept.size == completions.size) return

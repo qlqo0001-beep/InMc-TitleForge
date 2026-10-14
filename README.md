@@ -380,7 +380,7 @@ MMOItems 비용 아이템 인식은 MythicLib 의 `NBTItem`(있을 때)과 바�
 ## 이름표 / 탭리스트
 
 둘 다 기본은 켜짐이며 `config.yml` 의 `display.nametag` / `display.tablist` 로 조절합니다.
-**둘 다 끄면 표시 갱신 티커 자체가 생성되지 않습니다.**
+**이름표·탭리스트·말풍선을 모두 끄면 표시 갱신 티커 자체가 생성되지 않습니다.**
 
 ### 이름표 — 본인/타인 다른 내용
 
@@ -425,6 +425,61 @@ display:
 > `hide-when-not-visible` 은 몹이 플레이어를 찾을 때 쓰는 것과 같은 블록 레이캐스트로 판정합니다.
 > 뷰어 × 대상 조합마다 1회이므로 인원이 많은 서버에서 `visibility-check-ticks` 를
 > 너무 짧게 잡지 마세요(기본 10틱 = 0.5초).
+
+> **투명(vanish)** — core 투명 창구(`vanished` 표식, inmc-essentials·CMI·SuperVanish)로 투명인 사람의 이름표는
+> **기본 안 보임**으로 띄우고 볼 권한(`inmc.vanish.see`)이 있는 사람과 본인에게만 보여 줍니다. inmc-essentials 처럼 core 로 투명을
+> 거는 플러그인이면 거는 순간 이름표를 다시 만들어 시야 판정 주기(0.5초)를 기다리지 않습니다.
+> `%tf_online%` 도 투명인 사람은 볼 수 있는 사람에게만 셉니다 — 탭리스트(보는 사람마다 따로 그림)에서만 그렇고, 모두가 같은 글을 보는
+> 이름표 줄·`nameplate-format`(채팅·접속 메시지·PAPI)에서는 항상 투명인 사람을 뺀 수입니다.
+
+### 말풍선 (2026-10-10)
+
+공개 채팅을 말한 사람 머리 위(이름표 위)에 잠깐 띄웁니다(CMI 말풍선을 옮긴 것).
+
+- **채팅을 받은 사람에게만** 보입니다 — 거리 채팅·무시가 받는 사람을 줄였으면 그만큼만. 나중에 다가온 사람에게도 안 보입니다.
+- 개인 설정 **말풍선 보기**(`titleforge.chat-bubble`, 기본 켬)를 끈 사람에게는 안 보입니다(채팅창 글은 그대로).
+- 관전자·투명(vanish)인 사람의 말은 띄우지 않고, 떠 있는 동안 투명이 되면 곧바로 지웁니다. 이름표가 투명 물약에 숨는 설정
+  (`hide-when-invisible`)이면 투명 물약도 같습니다.
+- 따라가기·사라지기는 표시 갱신 티커가 말풍선이 있는 사람에게만 합니다(새 타이머 없음).
+
+```yaml
+display:
+  chat-bubble:
+    enabled: true
+    offset: 0.3          # 이름표 맨 위(이름표가 꺼져 있으면 머리) 위로
+    show-for: 5.0        # 초. 떠 있는 시간 = show-for + 글자 수 × per-char, 최대 max-show-for
+    per-char: 0.05
+    max-show-for: 10.0
+    scale: 1.0
+    line-width: 200      # 픽셀. 넘으면 줄바꿈
+    background: -2147483648   # ARGB. 0 = 투명, 0x80000000 = 50% 검정
+    shadow: true
+    max-length: 120      # 이보다 긴 말은 잘라 … 을 붙임
+```
+
+### 접속 · 퇴장 메시지 (2026-10-10)
+
+바닐라 접속·퇴장 문구를 바꿉니다(CMI 접속 메시지를 옮긴 것). 디스코드 연동은 바뀐 글을 그대로 받습니다.
+
+```yaml
+display:
+  join-messages:
+    enabled: true
+    join: '<dark_gray>[<green>+</green>]</dark_gray> <nameplate><gray> 님이 접속했습니다.</gray>'
+    first-join: '... <nameplate> ... <total>번째'   # 처음 온 사람
+    quit: '...'
+    kick: '...'          # 추방으로 나갈 때. <reason> = 추방 사유
+    auto-hide-from: -1   # 접속자가 이 수 이상이면 숨김. -1 = 끔
+    filter: []           # 이름이 걸리면 숨기는 정규식(대소문자 무시)
+```
+
+- 태그: `<nameplate>`(칭호·닉네임) `<nickname>` `<name>`(아이디) `<online>`(접속자 수 — 투명 제외) `<total>`(이 서버에 온 사람 수),
+  CMI 식 `[playerName]` `[totalUsers]` `[onlinePlayers]` 도 됩니다. 형식을 `''` 로 비우면 그 메시지는 나가지 않습니다.
+- 투명(vanish)인 사람(들어올 때 이미 투명인 사람 포함, 나가는 순간 투명이던 사람 포함)과 `titleforge.join.silent` 권한이 있는 사람은 메시지가 없습니다.
+- `titleforge.join.silent` 는 "있으면 조용해지는" 권한이라 LuckPerms 의 `*`·`titleforge.*` 를 가진 그룹(운영자 그룹 등)에도 붙습니다.
+  그 그룹에서 접속 메시지를 보이게 하려면 `titleforge.join.silent` 를 `false` 로 따로 넣어 주세요.
+- 서버를 끄거나 다시 켤 때(Paper 가 모두를 "추방"으로 내보냄)는 `kick` 이 아니라 `quit` 문구가 나갑니다.
+- **디스코드**: 접속·퇴장 문구가 없으면(투명·silent·filter·auto-hide-from·빈 형식) 디스코드에도 올라가지 않습니다(inmc-discord 2026-10-10).
 
 ### 내장 토큰 (16종)
 
@@ -528,6 +583,7 @@ placeholder-refresh-intervals:
 | `titleforge.nickname` | 모두 | 닉네임 변경 |
 | `titleforge.info.other` | OP | 타인 정보 조회 |
 | `titleforge.admin` | OP | 관리 전체 |
+| `titleforge.join.silent` | 없음 | 접속·퇴장 메시지를 내보내지 않음 (OP 에게는 안 붙지만 LuckPerms `*`·`titleforge.*` 에는 붙음 — 빼려면 `false`) |
 
 `titleforge.admin` 은 나머지 3개를 children 으로 포함하므로 따로 줄 필요가 없습니다.
 칭호별로 `permission` 을 지정하면 해당 권한이 있어야 장착할 수 있습니다.
@@ -568,6 +624,7 @@ placeholder-refresh-intervals:
   나갑니다. 색이 없는 닉네임은 예전과 똑같은 평문입니다.
 - `<title|seal>` 자리에는 `t` `s` `칭호` `인장` 도 쓸 수 있고, 전부 대소문자를 가리지 않습니다.
 - 순위 관련 값은 캐시가 채워지기 전에는 빈 문자열을 돌려주고 비동기로 채웁니다.
+- `/papi info titleforge` 에 전체 목록이 나옵니다 — 고정 이름, `<…>` 틀, 지금 있는 스텟·칭호·인장 id 로 채운 것.
 
 ### 월드 · 생물군계 이름
 
@@ -653,7 +710,7 @@ Java 에서는 `TitleForgeApi.INSTANCE.stat(...)` 형태로 호출합니다.
 | `storage` | `SQLITE`(기본) / `MYSQL`, 자동 저장 주기, 캐시 유지 시간 |
 | `title` / `seal` | 미장착 시 표시 문구, 수집 마일스톤 보너스 |
 | `nickname` | 입력 방식(DIALOG/CHAT), 허용 문자, 길이, 금지어, 중복 금지, 쿨타임, Vault·아이템 비용 |
-| `display` | displayName · 탭 이름 · 채팅 포맷 · 이름표 · 탭리스트 · 갱신 주기 |
+| `display` | displayName · 탭 이름 · 채팅 포맷 · 말풍선 · 접속·퇴장 메시지 · 이름표 · 탭리스트 · 갱신 주기 |
 | `gui` | 페이지 크기, 미보유 노출, 입력 대기 시간, 아이콘 |
 | `rank` | 사용 여부, 캐시 시간(기본 300초), 표시 인원 |
 | `placeholder-refresh-intervals` | 토큰별 재계산 주기(밀리초) |

@@ -23,4 +23,7 @@ class PlaceholderHook(plugin: TitleForgePlugin) : PlaceholderExpansion() {
     override fun persist(): Boolean = true
 
     override fun onRequest(player: OfflinePlayer?, params: String): String? = values.resolve(player, params)
+
+    /** `/papi info titleforge` 와 플레이스홀더 목록 화면이 보는 전체 이름(2026-10-10). 부를 때마다 지금 있는 스텟·칭호 id 로. */
+    override fun getPlaceholders(): List<String> = values.names().map { "%${identifier}_$it%" }
 }
