@@ -2,6 +2,11 @@
 
 ---
 
+## 미배포 — 투명의 가짜 접속·퇴장도 진짜 모양으로(2026-10-15)
+
+- `PlayerListener.onFakeConnection`(NORMAL) — core `FakeConnectionEvent` 의 문구를 `display.join-messages` 의 join/quit 형식으로(`JoinMessages.render`, 퇴장은 본인을 뺀 인원).
+  진짜 때 지웠을 상황(`titleforge.join.silent` · 이름 거르기 · `auto-hide-from`)이면 null — 가짜도 나가지 않는다. 접속 메시지 기능이 꺼져 있으면 손대지 않는다(essentials 기본 문구).
+
 ## 미배포 — core 장소 이름 창구의 공급처(2026-10-15)
 
 - `places.yml` 의 월드·생물군계 이름을 core `PlaceNames` 로 내놓는다(`placeNamesProvider` — 켤 때 꽂고 끌 때 뺀다). inmc-worlds 의 월드 화면이 이름을 읽고 **정하고**

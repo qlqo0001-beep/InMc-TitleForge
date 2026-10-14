@@ -52,6 +52,18 @@ class PlayerListener(private val plugin: TitleForgePlugin) : Listener {
         event.joinMessage(plugin.joinMessages.render(player, if (first) settings.firstJoin else settings.join, leaving = false))
     }
 
+    /**
+     * 투명을 켜고 끌 때의 가짜 접속·퇴장(core [kr.inmc.core.event.FakeConnectionEvent], 2026-10-15) — 진짜와 같은 모양으로. 쏘는 쪽(투명 기능)은
+     * 퇴장을 표식 걸기 전에, 접속을 표식 푼 뒤에 쏘므로 여기서는 보이는 사람이다. 진짜 때 지웠을 상황(침묵 권한 · 이름 거르기 · 인원 숨김)이면 null.
+     * inmc-discord 가 MONITOR 에서 이 글을 채널에 올린다.
+     */
+    @EventHandler(priority = EventPriority.NORMAL)
+    fun onFakeConnection(event: kr.inmc.core.event.FakeConnectionEvent) {
+        val settings = plugin.settings.display.joinMessages
+        if (!settings.enabled) return
+        event.message = plugin.joinMessages.render(event.player, if (event.joining) settings.join else settings.quit, leaving = !event.joining)
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onKick(event: PlayerKickEvent) {
         kicks[event.player.uniqueId] = event
