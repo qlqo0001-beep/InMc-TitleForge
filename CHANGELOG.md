@@ -120,7 +120,7 @@ CMI 를 inmc-essentials 로 바꾸는 작업(사용자 결정: 말풍선·접속
 - 타 플러그인 표시용 `TitleForgeApi.displayNameOf` 신설(평문, 닉네임 없으면 null) + 플러그인 브릿지 `displayNameOf`.
   core `TitleForgeNames` 가 리플렉션으로 읽는다
 
-> 이 폴더는 별도 git 저장소입니다(기본 브랜치 `claude/title-seal-system-plugin-m2b2lh`).
+> 이 폴더는 별도 git 저장소입니다(기본 브랜치 `main` — 2026-10-16 에 `claude/title-seal-system-plugin-m2b2lh` 에서 이름을 바꿨다).
 
 ---
 
