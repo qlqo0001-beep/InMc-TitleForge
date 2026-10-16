@@ -80,7 +80,8 @@ class DisplayTicker(private val plugin: TitleForgePlugin) {
             }
         }
 
-        if (display.nametag.enabled && display.nametag.hideWhenNotVisible) {
+        // 시야 가림과 은신(hidePlayer 로 숨기는 투명)은 서로 독립이다 — 둘 중 하나만 켜져 있어도 돈다(refreshVisibility 의 조건과 같게, 2026-10-16).
+        if (display.nametag.enabled && (display.nametag.hideWhenNotVisible || display.nametag.hideWhenInvisible)) {
             ticksSinceVisibilityCheck += display.refreshTicks
             if (ticksSinceVisibilityCheck >= display.nametag.visibilityCheckTicks) {
                 ticksSinceVisibilityCheck = 0L

@@ -31,13 +31,14 @@ class TablistService(private val plugin: TitleForgePlugin) {
         val session = plugin.tokens.session(perViewer = true)
         val header = render(session, player, settings.header)
         val footer = render(session, player, settings.footer)
-        val placeholders = session.placeholders()
 
         // 값이 자리표시자로 빠져 있으므로 변경 감지에는 값(signature)까지 포함한다.
         val combined = "$header $footer ${session.signature()}"
         if (lastSent[player.uniqueId] == combined) return
         lastSent[player.uniqueId] = combined
 
+        // 파싱은 바뀐 것을 확인한 뒤에만 — 매 틱 사람마다 도는 자리다.
+        val placeholders = session.placeholders()
         player.sendPlayerListHeaderAndFooter(
             Text.mini(header, *placeholders),
             Text.mini(footer, *placeholders),

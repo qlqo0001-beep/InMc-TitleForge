@@ -70,7 +70,10 @@ class NametagService(private val plugin: TitleForgePlugin) {
          */
         val revealed: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
 
-        /** 마지막으로 그린 원문. 같은 내용이면 다시 보내지 않는다. */
+        /**
+         * 마지막으로 그린 치환 원문([RenderedLines.sourceKey]). 같으면 파싱도 전송도 하지 않는다.
+         * 묶음이 비어 엔티티가 없을 때도 남긴다(그 묶음이 계속 비어 있으면 다시 볼 것이 없다).
+         */
         val rendered = EnumMap<Layer, String>(Layer::class.java)
     }
 
@@ -165,6 +168,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
     private fun remove(uuid: UUID, immediate: Boolean = false) {
         val handle = handles.remove(uuid) ?: return
         selfHidden.remove(uuid)
+        // 시야 숨김 기록은 이 묶음 엔티티들에 대한 것이다 — 통째로 다시 만들면(월드 이동·리스폰·투명 전환·리로드) 새 엔티티는 아무에게도
+        // 숨겨진 적이 없으니 기록도 비워 다음 시야 판정이 새로 정하게 한다. 안 비우면 시야 판정을 끈 리로드 뒤 영영 숨는다(2026-10-16 검토).
+        hiddenFrom.remove(uuid)
         for (display in handle.displays.values) {
             if (immediate) {
                 runCatching { display.remove() }
@@ -245,20 +251,31 @@ class NametagService(private val plugin: TitleForgePlugin) {
     private fun refreshLayer(player: Player, layer: Layer, vanished: Boolean): Boolean {
         val content = renderLines(player, linesOf(layer))
         val handle = handles.computeIfAbsent(player.uniqueId) { Handle(vanished) }
-
-        if (content.isEmpty()) {
-            handle.displays.remove(layer)?.let { display ->
-                Sched.entity(plugin, display) { runCatching { display.remove() } }
-            }
-            handle.rendered.remove(layer)
-            return false
-        }
-        val cacheKey = content.cacheKey
+        val cacheKey = content.sourceKey
 
         // 살아 있고 **같은 월드에 있는** 엔티티만 재사용한다.
         // 차원을 넘어가면 예전 월드에 남으므로 여기서 걸러져 새 월드에 다시 만들어진다.
         val cached = handle.displays[layer]
         val existing = cached?.takeIf { it.isValid && it.world == player.world }
+
+        // 치환 원문이 지난번과 같으면 파싱하지 않는다 — 이 함수는 매 틱 사람마다 돈다
+        // (2026-10-16 테섭 JFR: 값이 같아도 파싱해 메인 표본의 12%).
+        if (handle.rendered[layer] == cacheKey) {
+            if (cached == null) return false // 지난번에도 빈 묶음
+            if (existing != null) {
+                follow(player, existing, layer)
+                return true
+            }
+        }
+
+        if (content.isEmpty()) {
+            handle.displays.remove(layer)?.let { display ->
+                Sched.entity(plugin, display) { runCatching { display.remove() } }
+            }
+            // 빈 것도 기억한다 — 안 그러면 인장 없는 사람의 인장 줄을 매 틱 다시 파싱한다.
+            handle.rendered[layer] = cacheKey
+            return false
+        }
 
         // 재사용할 수 없게 된 엔티티는 **반드시 지우고** 넘어간다.
         // 참조만 덮어쓰면 그 엔티티가 예전 월드에 그대로 남는다.
@@ -269,10 +286,20 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
         val display = existing ?: spawn(player, layer, handle.vanished)?.also {
             handle.displays[layer] = it
-            // 새로 만든 엔티티는 누구에게도 숨겨진 적이 없다(hideEntity 상태는 엔티티별로 따로 관리됨).
-            // 예전 엔티티 기준으로 기록해 둔 hiddenFrom 을 그대로 두면 "이미 숨겨져 있다"고 착각해
-            // 다음 시야 판정에서 hideEntity 를 다시 부르지 않게 되므로, 여기서 비워 재판정을 강제한다.
-            hiddenFrom.remove(player.uniqueId)
+            // 새로 만든 엔티티에는 시야 숨김이 걸려 있지 않다(hideEntity 상태는 엔티티별로 따로 관리됨).
+            // 같은 Handle 안에서 이 묶음만 다시 만든 것이면 시야로 숨겨 둔 사람(hiddenFrom)에게 새 엔티티도 숨겨 기록을 참으로 둔다.
+            // 예전처럼 기록을 비우면 그대로 있는 다른 묶음이 그 사람에게 숨은 채 남았다 — 다음 판정이 "안 바뀜" 으로 넘어가서(2026-10-16 검토).
+            // 통째로 다시 만든 Handle 이면 [remove] 가 기록을 이미 비웠다.
+            val fresh = it
+            hiddenFrom[player.uniqueId]?.forEach { id ->
+                val viewer = Bukkit.getPlayer(id) ?: return@forEach
+                Sched.entity(plugin, viewer) {
+                    // 실행할 때 다시 본다 — 그 사이 시야 판정이 "보임" 으로 바꿨다면 그쪽이 새 엔티티까지 이미 맞췄다.
+                    if (fresh.isValid && handle.displays[layer] === fresh && hiddenFrom[player.uniqueId]?.contains(id) == true) {
+                        runCatching { viewer.hideEntity(plugin, fresh) }
+                    }
+                }
+            }
             // 보여 준 기록도 옛 엔티티 기준이다 — 비워야 다음 시야 판정이 새 묶음까지 보여 준다.
             handle.revealed.clear()
             // 타인 인장 끄기 기록도 옛 엔티티 기준이다 — 비워야 아래 syncSeals 가 새 엔티티를 다시 숨긴다.
@@ -288,7 +315,6 @@ class NametagService(private val plugin: TitleForgePlugin) {
         follow(player, display, layer)
 
         // 캐시 갱신은 엔티티를 확보한 **뒤에** 한다. 새로 만든 엔티티는 내용이 같아도 한 번 써야 한다.
-        if (existing != null && handle.rendered[layer] == cacheKey) return true
         display.text(content.component())
         handle.rendered[layer] = cacheKey
         return true
@@ -367,7 +393,8 @@ class NametagService(private val plugin: TitleForgePlugin) {
                             !settings.hideWhenInvisible ||
                                 runCatching { viewer.canSee(owner) }.getOrDefault(true)
                             )
-                        val lineOfSight = reachable &&
+                        // 시야 가림을 끈 설정(은신만 켬)에서는 결과를 안 쓰니 레이캐스트도 하지 않는다.
+                        val lineOfSight = useLineOfSight && reachable &&
                             runCatching { viewer.hasLineOfSight(owner) }.getOrDefault(true)
                         val visible = NametagVisibility.visibleTo(
                             concealed = false, // 전역 은신은 refresh() 에서 엔티티째 지운다
@@ -389,6 +416,9 @@ class NametagService(private val plugin: TitleForgePlugin) {
      * 없으면 보여 준다. 그래야 나중에 들어온 사람·볼 권한이 있는 관리자에게도 보인다.
      */
     private fun applyVisibility(owner: Player, handle: Handle, viewer: Player, visible: Boolean) {
+        // 판정을 예약한 뒤 묶음이 통째로 다시 만들어졌으면(월드 이동·리스폰·리로드) 이 판정은 옛 엔티티의 것이다 — 버린다.
+        // 안 버리면 [remove] 가 비운 숨김 기록을 다시 써서 새 엔티티까지 숨긴다(2026-10-16 검토). 새 묶음은 다음 판정이 정한다.
+        if (handles[owner.uniqueId] !== handle) return
         val hidden = hiddenFrom.getOrPut(owner.uniqueId) { ConcurrentHashMap.newKeySet() }
         val currentlyHidden = hidden.contains(viewer.uniqueId)
         val reveal = visible && handle.vanished && !handle.revealed.contains(viewer.uniqueId)
@@ -434,12 +464,38 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
     }
 
-    /** 주인 갱신 때마다 — 접속 중인 뷰어들의 인장 설정을 공유 이름표에 반영한다. */
+    /**
+     * 주인 갱신 때마다 — 접속 중인 뷰어들의 인장 설정을 공유 이름표에 반영한다.
+     * 설정과 숨긴 기록이 어긋난 사람만 본다: 켰는데 아직 안 숨긴 사람, 숨겼는데 이제 끈 사람.
+     * 설정은 알림 없이도 바뀔 수 있어(UUID 로 쓰는 길) 갱신마다 맞춘다.
+     */
     private fun syncSeals(owner: Player) {
-        for (viewer in Bukkit.getOnlinePlayers()) {
-            if (viewer.uniqueId == owner.uniqueId) continue
-            applySeal(owner, viewer)
+        if (handles[owner.uniqueId]?.displays?.get(Layer.SHARED) == null) return
+        val hiders = sealHiders()
+        val tracked = sealHiddenFrom[owner.uniqueId]
+        for (id in hiders) {
+            if (id == owner.uniqueId || tracked?.contains(id) == true) continue
+            Bukkit.getPlayer(id)?.let { applySeal(owner, it) }
         }
+        tracked?.forEach { id -> if (id !in hiders) Bukkit.getPlayer(id)?.let { applySeal(owner, it) } }
+    }
+
+    /** [sealHiders] 를 센 서버 틱과 그 결과. */
+    @Volatile
+    private var sealHidersMemo: Pair<Int, Set<UUID>> = -1 to emptySet()
+
+    /**
+     * "타인 인장 끄기" 를 켠 접속자. 개인 설정 조회가 가볍지 않아 서버 틱마다 한 번만 센다 —
+     * 주인마다 접속자 전원에게 물으면 매 틱 인원 제곱이었다(2026-10-16).
+     */
+    private fun sealHiders(): Set<UUID> {
+        val tick = Bukkit.getCurrentTick()
+        sealHidersMemo.let { (at, hiders) -> if (at == tick) return hiders }
+        val hiders = Bukkit.getOnlinePlayers()
+            .filter { kr.inmc.core.integration.PlayerSettings.enabled(it.uniqueId, TitleForgeSettings.HIDE_OTHERS_SEAL, false) }
+            .mapTo(HashSet()) { it.uniqueId }
+        sealHidersMemo = tick to hiders
+        return hiders
     }
 
     private fun applySeal(owner: Player, viewer: Player) {
@@ -520,39 +576,41 @@ class NametagService(private val plugin: TitleForgePlugin) {
     }
 
     /**
-     * 설정된 줄들을 MiniMessage 원문 하나로 합친다.
-     * 치환 결과가 빈 줄은 자동으로 빠진다.
+     * 설정된 줄들을 치환한다. 파싱(빈 줄 판정·Component)은 [RenderedLines] 가 처음 필요할 때 한다 —
+     * [refreshLayer] 는 [RenderedLines.sourceKey] 가 지난번과 같으면 파싱하지 않는다.
      */
     private fun renderLines(player: Player, lines: List<String>): RenderedLines {
         if (lines.isEmpty()) return RenderedLines.EMPTY
         val session = plugin.tokens.session()
-        val kept = lines.mapNotNull { line ->
-            val resolved = session.render(player, line)
-            // 치환 결과가 사실상 비어 있으면(태그만 남으면) 그 줄은 버린다.
-            if (Text.plain(Text.mini(resolved, *session.placeholders())).isBlank()) null else resolved
-        }
-        return RenderedLines(kept.joinToString("<newline>"), session.placeholders(), session.signature())
+        return RenderedLines(lines.map { session.render(player, it) }, session)
     }
 
     /**
      * 치환 결과 한 묶음.
      *
      * 값이 자리표시자로 빠져 있어 템플릿만으로는 내용이 바뀌었는지 알 수 없다.
-     * 그래서 [cacheKey] 로 값까지 포함해 비교한다 — 안 그러면 칭호가 바뀌어도 다시 안 보낸다.
+     * 그래서 [sourceKey] 로 값까지 포함해 비교한다 — 안 그러면 칭호가 바뀌어도 다시 안 보낸다.
+     * [sourceKey] 는 파싱 없이 만들고, 같으면 [template]·[component] 도 같다.
      */
     private class RenderedLines(
-        val template: String,
-        val placeholders: Array<Pair<String, Any?>>,
-        signature: String,
+        private val resolved: List<String>,
+        private val session: TokenRenderer.Session?,
     ) {
-        val cacheKey: String = "$template $signature"
+        val sourceKey: String = resolved.joinToString("\n") + "\u0000" + session?.signature().orEmpty()
+
+        private val placeholders by lazy(LazyThreadSafetyMode.NONE) { session?.placeholders() ?: emptyArray() }
+
+        /** 치환 결과가 사실상 비어 있는(태그만 남은) 줄을 뺀 MiniMessage 원문. 빈 줄 판정에 파싱이 들어 처음 부를 때 만든다. */
+        val template: String by lazy(LazyThreadSafetyMode.NONE) {
+            resolved.filterNot { Text.plain(Text.mini(it, *placeholders)).isBlank() }.joinToString("<newline>")
+        }
 
         fun isEmpty(): Boolean = template.isEmpty()
 
         fun component(): Component = Text.mini(template, *placeholders)
 
         companion object {
-            val EMPTY = RenderedLines("", emptyArray(), "")
+            val EMPTY = RenderedLines(emptyList(), null)
         }
     }
 
@@ -605,8 +663,11 @@ class NametagService(private val plugin: TitleForgePlugin) {
         }
         // **승객으로 태우지 않는다.** 태우면 치장 플러그인이 붙인 승객과 세로로 쌓여
         // 이름표가 뜨거나 치장 위치가 밀리고, 차원 이동에도 제약이 생긴다.
-        // 본인 전용 숨김. 인장 묶음은 본인도 봐야 하므로 건드리지 않는다.
+        // 본인 전용 숨김 — 칭호 묶음은 "칭호,닉네임 보기"(SHOW_NAME), 인장 묶음은 "내 인장 보기"(SHOW_SEAL)를 끈 사람에게 처음부터 숨긴다.
+        // 인장 묶음을 여기서 안 숨기면, 같은 Handle 안에서 다시 만든 엔티티는 본인 숨김 기록(selfHidden)이 이미 SHARED 라
+        // syncSelfView 가 건너뛰어 설정은 꺼져 있는데 인장이 다시 보였다(2026-10-16 검토).
         if (layer == Layer.OTHERS && !selfShowsOthers(player)) player.hideEntity(plugin, display)
+        if (layer == Layer.SHARED && !selfShowsShared(player)) player.hideEntity(plugin, display)
         if (vanished) revealToWatchers(player, layer, display)
         display
     }.getOrElse {
@@ -616,7 +677,8 @@ class NametagService(private val plugin: TitleForgePlugin) {
 
     /**
      * 기본 안 보임으로 띄운 투명인 사람의 이름표를 볼 수 있는 사람(`Vanish.canSee`)과 본인 설정대로 본인에게 보여 준다.
-     * 시야 가림은 다음 시야 판정이 맡는다(새 엔티티라 `hiddenFrom` 이 비어 다시 판정된다).
+     * 시야 가림은 다음 시야 판정이 맡는다 — 통째로 새로 만든 묶음이면 `hiddenFrom` 이 비어 다시 판정되고, 같은 Handle 안에서 이 묶음만
+     * 다시 만든 것이면 [refreshLayer] 가 시야로 숨겨 둔 사람에게 새 엔티티도 숨긴다(같은 viewer 스케줄러에 여기 보여 주기 뒤로 예약된다).
      */
     private fun revealToWatchers(owner: Player, layer: Layer, display: TextDisplay) {
         val self = if (layer == Layer.SHARED) selfShowsShared(owner) else selfShowsOthers(owner)
@@ -661,7 +723,11 @@ class NametagService(private val plugin: TitleForgePlugin) {
     private fun nametagTeam(): Team? = runCatching {
         val board = Bukkit.getScoreboardManager().mainScoreboard
         (board.getTeam(TEAM_NAME) ?: board.registerNewTeam(TEAM_NAME)).apply {
-            setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.NEVER)
+            // 다를 때만 — 서버는 같은 값인지 보지 않고 팀 패킷을 전원에게 다시 보내고 위치 표시줄 웨이포인트까지 다시 잇는다.
+            // 매 틱 사람마다 불리는 자리라 인원 N 에 팀 패킷 N²·웨이포인트 약 N³ 이 됐다(2026-10-16 테섭 JFR).
+            if (getOption(Team.Option.NAME_TAG_VISIBILITY) != Team.OptionStatus.NEVER) {
+                setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.NEVER)
+            }
         }
     }.getOrNull()
 

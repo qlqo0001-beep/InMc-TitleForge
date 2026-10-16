@@ -84,11 +84,12 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
      */
     inner class Session(private val bleed: Boolean, private val perViewer: Boolean) {
 
-        private val values = ArrayList<Pair<String, Any?>>()
+        /** 자리표시자 이름 → 값 원문. 파싱은 [placeholders] 를 부를 때까지 미룬다. */
+        private val rawValues = ArrayList<Pair<String, String>>()
         private val nameByToken = HashMap<String, String>()
 
-        /** 변경 감지용. 치환된 값들의 원문을 이어 붙인 것. */
-        private val signatureParts = ArrayList<String>()
+        /** [placeholders] 의 파싱 결과. 값이 더 등록되면 버린다. */
+        private var parsed: Array<Pair<String, Any?>>? = null
 
         /** @return 자리표시자 이름으로 치환된 템플릿. [placeholders] 와 함께 파싱해야 한다. */
         fun render(player: Player, line: String): String {
@@ -107,16 +108,21 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
         }
 
         private fun register(value: String): String {
-            val name = "$PLACEHOLDER_PREFIX${values.size}"
-            values += name to (Text.mini(value) as Any?)
-            signatureParts += value
+            val name = "$PLACEHOLDER_PREFIX${rawValues.size}"
+            rawValues += name to value
+            parsed = null
             return name
         }
 
-        fun placeholders(): Array<Pair<String, Any?>> = values.toTypedArray()
+        /**
+         * 값들을 MiniMessage 로 파싱해 돌려준다. **비싸다** — 매 틱 도는 표시 갱신은 [signature] 로 바뀐 것을 확인한 뒤에만 부를 것
+         * (값이 같아도 매 틱 파싱해 메인 표본의 12%를 먹던 곳, 2026-10-16).
+         */
+        fun placeholders(): Array<Pair<String, Any?>> =
+            parsed ?: rawValues.map { (name, value) -> name to (Text.mini(value) as Any?) }.toTypedArray().also { parsed = it }
 
-        /** 템플릿만으로는 값 변화를 알 수 없으므로 함께 비교할 문자열. */
-        fun signature(): String = signatureParts.joinToString("")
+        /** 템플릿만으로는 값 변화를 알 수 없으므로 함께 비교할 문자열. 파싱 없이 만든다. */
+        fun signature(): String = rawValues.joinToString("") { it.second }
     }
 
     private fun resolve(player: Player, token: String, raw: String, perViewer: Boolean): String {
@@ -166,9 +172,13 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
             Bukkit.getOnlinePlayers().count { Vanish.isVanished(it) }.toString()
         }.toInt()
         if (vanished == 0) return visible.toString()
+        // 권한은 다른 토큰처럼 주기 캐시 — 탭리스트는 매 틱 보는 사람마다 돌고, LuckPerms 는 묻을 때마다 문맥을 다시 계산할 수 있다.
+        val viewerCanSee = cached(playerCache.getOrPut(viewer.uniqueId) { ConcurrentHashMap() }, SEE_KEY) {
+            viewer.hasPermission(Vanish.SEE_PERMISSION).toString()
+        }.toBoolean()
         return onlineCount(
             visible, vanished,
-            viewerCanSee = viewer.hasPermission(Vanish.SEE_PERMISSION),
+            viewerCanSee = viewerCanSee,
             viewerVanished = Vanish.isVanished(viewer),
         ).toString()
     }
@@ -259,6 +269,9 @@ class TokenRenderer(private val plugin: TitleForgePlugin) {
 
         /** 전역 캐시에서 투명인 접속자 수를 두는 열쇠 — 공백이 있어 설정의 토큰 이름과 겹칠 수 없다. */
         const val VANISHED_KEY = "tf_online vanished"
+
+        /** 플레이어별 캐시에서 "투명인 사람을 볼 권한" 을 두는 열쇠 — [VANISHED_KEY] 와 같은 까닭으로 공백. */
+        const val SEE_KEY = "tf_online see"
 
         /** 옛 PAPI 자바스크립트 이름 → 같은 값을 내는 자기 이름(`titleforge_` 뒤). 설정을 안 고쳐도 자바스크립트를 부르지 않게. */
         val LEGACY_SCRIPTS = mapOf("javascript_world_name" to "world_mini", "javascript_biome" to "biome_mini")
